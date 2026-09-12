@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "artifacts": [
+    {
+      "report": {
+        "path": "Demo PBI Report.Report"
+      }
+    }
+  ],
+  "settings": {
+    "enableAutoRecovery": true
+  }
+}

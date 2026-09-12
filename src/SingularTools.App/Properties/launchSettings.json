@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "SingularTools.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "SingularTools.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

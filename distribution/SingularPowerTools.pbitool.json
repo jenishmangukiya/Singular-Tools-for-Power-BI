@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "name": "Singular Power Tools",
+  "description": "Command Palette and Page Organizer for Power BI reports (Ctrl+Alt+P)",
+  "path": "C:\\Users\\mjeni\\AppData\\Local\\SingularPowerTools\\SingularTools.App.exe",
+  "arguments": "\"%server%\" \"%database%\"",
+  "iconData": "image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAAG1JREFUWIW90rENwCAMRNEvY6RkEMZ/kTAiRQbA0eB8cbnL1rfvBvBmAeZ2r8p04P6x23n9XQG4G4B3G/BvAbh7gLsJuJuAu/2Vq7t3G3A3APcScDcBdwNwdz8D7ibg7gbg3QDcTcDdANwNwP1zF3v4QWwE0d0EAAAAAElFTkSuQmCC"
+}
