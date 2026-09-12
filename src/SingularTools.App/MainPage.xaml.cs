@@ -9,10 +9,6 @@ using Microsoft.UI.Xaml.Input;
 using SingularTools.Core;
 using SingularTools.Core.Models;
 using Windows.Storage.Pickers;
-using Windows.Storage.Streams;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.UI;
 
 namespace SingularTools_App;
 
@@ -36,6 +32,7 @@ public sealed partial class MainPage : Page
     private readonly ReportManager _reportManager = new();
     private readonly ObservableCollection<PageItemViewModel> _items = new();
     private string _filterText = string.Empty;
+    private bool _suppressNavigation;
 
     public MainPage()
     {
@@ -105,6 +102,7 @@ public sealed partial class MainPage : Page
 
     public void RefreshList()
     {
+        _suppressNavigation = true;
         _items.Clear();
 
         var query = _filterText.Trim();
@@ -113,6 +111,7 @@ public sealed partial class MainPage : Page
         if (query.StartsWith(">"))
         {
             HandleCommandQuery(query);
+            _suppressNavigation = false;
             return;
         }
 
@@ -143,10 +142,7 @@ public sealed partial class MainPage : Page
             PagesListView.SelectedIndex = 0;
         }
 
-        if (ExpandPageViewBtn?.IsChecked == true)
-        {
-            UpdateSelectedPagePreview();
-        }
+        _suppressNavigation = false;
     }
 
     private void HandleCommandQuery(string query)
@@ -398,6 +394,12 @@ public sealed partial class MainPage : Page
         _reportManager.SaveChanges();
         StatusMessageText.Text = $"Active page set to '{selected.DisplayName}' (saved to pages.json)";
         RefreshList();
+
+        // Optionally navigate the open Power BI report to this page
+        if (GoToPageBtn?.IsChecked == true)
+        {
+            NavigateToOpenReport(selected);
+        }
     }
 
     private void MoveUp_Click(object sender, RoutedEventArgs e)
@@ -583,6 +585,53 @@ public sealed partial class MainPage : Page
     private void SortReverse_Click(object sender, RoutedEventArgs e) => ExecuteSort(SortMode.Reverse, "Reversed page order");
     private void Save_Click(object sender, RoutedEventArgs e) => SaveChanges();
 
+    private void GoToPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (GoToPageBtn.IsChecked == true)
+        {
+            StatusMessageText.Text = "Go-to-page is ON. Selecting a page now navigates the open Power BI report.";
+            var selected = PagesListView.SelectedItem as PageItemViewModel;
+            if (selected != null && !selected.Id.StartsWith("cmd:"))
+            {
+                NavigateToOpenReport(selected);
+            }
+        }
+        else
+        {
+            StatusMessageText.Text = "Go-to-page is OFF.";
+        }
+    }
+
+    private void PagesListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressNavigation || GoToPageBtn?.IsChecked != true)
+        {
+            return;
+        }
+
+        var selected = PagesListView.SelectedItem as PageItemViewModel;
+        if (selected == null || selected.Id.StartsWith("cmd:"))
+        {
+            return;
+        }
+
+        NavigateToOpenReport(selected);
+    }
+
+    private void NavigateToOpenReport(PageItemViewModel page)
+    {
+        if (page == null || page.Id.StartsWith("cmd:")) return;
+
+        if (PowerBiNavigator.TryGoToPage(page.DisplayName, out var error))
+        {
+            StatusMessageText.Text = $"→ Went to '{page.DisplayName}' in the open Power BI report";
+        }
+        else
+        {
+            StatusMessageText.Text = $"Could not go to '{page.DisplayName}': {error}";
+        }
+    }
+
     private async void OpenFolderButton_Click(object sender, RoutedEventArgs e)
     {
         var folderPicker = new FolderPicker();
@@ -596,217 +645,6 @@ public sealed partial class MainPage : Page
         if (folder != null)
         {
             LoadReportFolder(folder.Path);
-        }
-    }
-
-    private void PagesListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ExpandPageViewBtn?.IsChecked == true)
-        {
-            UpdateSelectedPagePreview();
-        }
-    }
-
-    private void ExpandPageView_Click(object sender, RoutedEventArgs e)
-    {
-        bool isExpanded = ExpandPageViewBtn.IsChecked == true;
-        PagePreviewPane.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
-        LeftPaneCol.Width = isExpanded ? new GridLength(450, GridUnitType.Pixel) : new GridLength(1, GridUnitType.Star);
-
-        App.CurrentMainWindow?.SetExpandedMode(isExpanded);
-
-        if (isExpanded)
-        {
-            UpdateSelectedPagePreview();
-        }
-    }
-
-    private async void CaptureScreenBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var selected = PagesListView.SelectedItem as PageItemViewModel;
-        if (selected == null) return;
-
-        StatusMessageText.Text = "Capturing Power BI Desktop window...";
-        var bmpBytes = ScreenCaptureService.CapturePowerBiWindow(out string? error);
-        if (bmpBytes != null)
-        {
-            ScreenCaptureService.SaveCaptureForPage(selected.Id, bmpBytes);
-            await SetPreviewImageFromBytes(bmpBytes);
-            StatusMessageText.Text = $"✓ Captured live screenshot for '{selected.DisplayName}'";
-        }
-        else
-        {
-            StatusMessageText.Text = $"Could not capture live screen: {error}";
-        }
-    }
-
-    private void PreviewSetActiveBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var selected = PagesListView.SelectedItem as PageItemViewModel;
-        if (selected == null) return;
-
-        _reportManager.SetActivePage(selected.Id);
-        _reportManager.SaveChanges();
-        RefreshList();
-        StatusMessageText.Text = $"Set '{selected.DisplayName}' as active page.";
-        ReselectId(selected.Id);
-        UpdateSelectedPagePreview();
-    }
-
-    private async void UpdateSelectedPagePreview()
-    {
-        var selected = PagesListView.SelectedItem as PageItemViewModel;
-        if (selected == null)
-        {
-            PreviewTitleText.Text = "Select a page";
-            PreviewSubtitleText.Text = "No page selected";
-            PreviewActiveBadge.Visibility = Visibility.Collapsed;
-            PreviewFooterText.Text = "Visual Elements: none";
-            PreviewImage.Visibility = Visibility.Collapsed;
-            PreviewWireframeViewbox.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        PreviewTitleText.Text = selected.DisplayName;
-        PreviewActiveBadge.Visibility = selected.IsActive ? Visibility.Visible : Visibility.Collapsed;
-
-        var visualInfo = _reportManager.GetPageVisuals(selected.Id);
-        PreviewSubtitleText.Text = $"Resolution: {(int)visualInfo.PageWidth} x {(int)visualInfo.PageHeight} | {visualInfo.VisualCount} visual(s)";
-
-        if (visualInfo.VisualCount > 0)
-        {
-            var summary = string.Join(", ", visualInfo.Visuals.Take(4).Select(v => v.FriendlyType));
-            if (visualInfo.VisualCount > 4) summary += $" +{visualInfo.VisualCount - 4} more";
-            PreviewFooterText.Text = $"Visual Elements: {summary}";
-        }
-        else
-        {
-            PreviewFooterText.Text = "Visual Elements: None (Empty Canvas)";
-        }
-
-        // 1. Check if we already have a cached live capture
-        var cached = ScreenCaptureService.GetCaptureForPage(selected.Id);
-        if (cached != null)
-        {
-            await SetPreviewImageFromBytes(cached);
-            return;
-        }
-
-        // 2. If this page is currently active in Power BI Desktop, try auto-capturing live
-        if (selected.IsActive)
-        {
-            var live = ScreenCaptureService.CapturePowerBiWindow(out _);
-            if (live != null)
-            {
-                ScreenCaptureService.SaveCaptureForPage(selected.Id, live);
-                await SetPreviewImageFromBytes(live);
-                return;
-            }
-        }
-
-        // 3. Fallback: Schematic Wireframe Blueprint
-        RenderWireframe(visualInfo);
-    }
-
-    private async Task SetPreviewImageFromBytes(byte[] bmpBytes)
-    {
-        try
-        {
-            using var ms = new InMemoryRandomAccessStream();
-            using (var writer = new DataWriter(ms))
-            {
-                writer.WriteBytes(bmpBytes);
-                await writer.StoreAsync();
-                await writer.FlushAsync();
-            }
-            ms.Seek(0);
-            var bmp = new BitmapImage();
-            await bmp.SetSourceAsync(ms);
-
-            PreviewImage.Source = bmp;
-            PreviewImage.Visibility = Visibility.Visible;
-            PreviewWireframeViewbox.Visibility = Visibility.Collapsed;
-            PreviewStatusTag.Text = "Live Power BI Capture";
-            StatusDot.Fill = new SolidColorBrush(Color.FromArgb(255, 16, 124, 65)); // Green
-        }
-        catch (Exception ex)
-        {
-            App.Log($"Error rendering screenshot: {ex.Message}");
-        }
-    }
-
-    private void RenderWireframe(PageVisualInfo info)
-    {
-        PreviewImage.Visibility = Visibility.Collapsed;
-        PreviewWireframeViewbox.Visibility = Visibility.Visible;
-        PreviewStatusTag.Text = info.VisualCount > 0 ? $"Blueprint ({info.VisualCount} visual{(info.VisualCount > 1 ? "s" : "")})" : "Blueprint (Empty Page)";
-        StatusDot.Fill = new SolidColorBrush(Color.FromArgb(255, 0, 120, 212)); // Accent Blue
-
-        WireframeCanvas.Children.Clear();
-        double pageWidth = info.PageWidth > 0 ? info.PageWidth : 1280;
-        double pageHeight = info.PageHeight > 0 ? info.PageHeight : 720;
-
-        WireframeCanvas.Width = pageWidth;
-        WireframeCanvas.Height = pageHeight;
-        WireframeCanvasBorder.Width = pageWidth;
-        WireframeCanvasBorder.Height = pageHeight;
-
-        if (info.Visuals.Count == 0)
-        {
-            var emptyText = new TextBlock
-            {
-                Text = "Empty Canvas\n(No visual containers on this page)",
-                TextAlignment = TextAlignment.Center,
-                FontSize = 26,
-                Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
-            };
-            Canvas.SetLeft(emptyText, Math.Max(20, (pageWidth - 460) / 2));
-            Canvas.SetTop(emptyText, Math.Max(20, (pageHeight - 80) / 2));
-            WireframeCanvas.Children.Add(emptyText);
-            return;
-        }
-
-        foreach (var v in info.Visuals)
-        {
-            var vBorder = new Border
-            {
-                Width = Math.Max(30, v.Width),
-                Height = Math.Max(30, v.Height),
-                CornerRadius = new CornerRadius(6),
-                BorderThickness = new Thickness(2),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(220, 0, 120, 212)),
-                Background = new SolidColorBrush(Color.FromArgb(45, 0, 120, 212))
-            };
-
-            var stack = new StackPanel
-            {
-                Padding = new Thickness(8),
-                Spacing = 2
-            };
-
-            var titleBlock = new TextBlock
-            {
-                Text = string.IsNullOrEmpty(v.DisplayTitle) ? v.FriendlyType : v.DisplayTitle,
-                FontSize = 14,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"]
-            };
-
-            var typeBlock = new TextBlock
-            {
-                Text = $"{v.FriendlyType} • {(int)v.Width} × {(int)v.Height}",
-                FontSize = 11,
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-            };
-
-            stack.Children.Add(titleBlock);
-            stack.Children.Add(typeBlock);
-            vBorder.Child = stack;
-
-            Canvas.SetLeft(vBorder, Math.Max(0, v.X));
-            Canvas.SetTop(vBorder, Math.Max(0, v.Y));
-            WireframeCanvas.Children.Add(vBorder);
         }
     }
 }

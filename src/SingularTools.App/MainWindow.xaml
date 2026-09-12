@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:SingularTools_App"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="Singular Power Tools for Power BI"
+    Title="Singular Tools"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
         <MicaBackdrop />
@@ -21,7 +21,8 @@
         <!-- Custom draggable TitleBar area -->
         <Grid x:Name="AppTitleBar" Height="36" Padding="16,0,0,0" Background="Transparent">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
-                <TextBlock Text="⚡ Singular Power Tools (Ctrl+Alt+P)" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Image x:Name="AppTitleBarLogo" Width="18" Height="18" VerticalAlignment="Center" Source="Assets/Square44x44Logo.scale-200.png" />
+                <TextBlock Text="Singular Tools (Ctrl+Alt+P)" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
         </Grid>
 

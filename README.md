@@ -1,6 +1,6 @@
-# Singular Power Tools for Power BI ⚡
+# Singular Tools for Power BI ⚡
 
-**Singular Power Tools** is a modern, keyboard-first **Command Palette** and **Page Organizer** for Power BI Desktop authors built with **WinUI 3 (Windows App SDK)** and **.NET 10**.
+**Singular Tools** is a modern, keyboard-first **Command Palette** and **Page Organizer** for Power BI Desktop authors built with **WinUI 3 (Windows App SDK)** and **.NET 10**.
 
 Think of it as **PowerToys Run / Raycast / VS Code Command Palette for Power BI**.
 
@@ -16,6 +16,10 @@ Think of it as **PowerToys Run / Raycast / VS Code Command Palette for Power BI*
 - **🔍 Instant Fuzzy Page Search & Navigation**:
   - Type to filter across report pages in real time.
   - Hit `Enter` to switch and activate the selected page.
+
+- **🧭 Go to Page in Open Report**:
+  - Toggle **Go to page in Open Report** on, then select any page in the list to jump the currently open Power BI Desktop report straight to that page.
+  - Uses UI Automation against the running Power BI Desktop window, so no report reload is required.
 
 - **🗂️ Interactive Page Reordering**:
   - `Alt + Up` / `Alt + Down`: Move selected page up or down in the report tab bar.
@@ -101,4 +105,4 @@ pwsh -ExecutionPolicy Bypass -File "distribution/register-external-tool.ps1"
 This will:
 1. Publish the Release build to `%LOCALAPPDATA%\SingularPowerTools\`.
 2. Place `SingularPowerTools.pbitool.json` in Power BI Desktop's External Tools registry.
-3. Power BI Desktop will display **Singular Power Tools** in the ribbon under **External Tools** on next launch!
+3. Power BI Desktop will display **Singular Tools** in the ribbon under **External Tools** on next launch!

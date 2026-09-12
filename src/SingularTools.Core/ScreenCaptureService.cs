@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace SingularTools.Core;
 
@@ -42,6 +43,18 @@ public static class ScreenCaptureService
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr hWnd, out WindowRect lpRect);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
+
     [DllImport("gdi32.dll")]
     private static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint uStartScan, uint cScanLines, [Out] byte[]? lpvBits, ref BITMAPINFO lpbi, uint uUsage);
 
@@ -73,6 +86,11 @@ public static class ScreenCaptureService
     private const uint DIB_RGB_COLORS = 0;
     private const uint BI_RGB = 0;
 
+    private const int SW_HIDE = 0;
+    private const int SW_SHOW = 5;
+    private const int SW_SHOWNOACTIVATE = 4;
+    private const int SW_RESTORE = 9;
+
     public static void SaveCaptureForPage(string pageId, byte[] bmpData)
     {
         if (string.IsNullOrEmpty(pageId) || bmpData == null || bmpData.Length == 0) return;
@@ -96,18 +114,39 @@ public static class ScreenCaptureService
         _pageScreenshots.Clear();
     }
 
-    public static byte[]? CapturePowerBiWindow(out string? error)
+    /// <summary>
+    /// Captures the live Power BI Desktop window. Tries an off-screen window render
+    /// first; if that yields a blank frame (common for GPU-composited windows),
+    /// falls back to capturing the on-screen region while the palette window
+    /// (paletteHwnd) is temporarily hidden so it does not occlude the report.
+    /// </summary>
+    public static byte[]? CapturePowerBiWindow(IntPtr paletteHwnd, out string? error)
     {
         error = null;
         try
         {
             if (!PowerBiDetector.FindActivePowerBiWindow(out IntPtr pbiHwnd, out _, out WindowRect rect) || pbiHwnd == IntPtr.Zero)
             {
-                error = "Power BI Desktop window not found.";
+                error = "Power BI Desktop window not found. Make sure Power BI Desktop is open.";
                 return null;
             }
 
-            return CaptureWindow(pbiHwnd, out error);
+            // 1. Try rendering the window directly (works even when occluded).
+            var rendered = CaptureWindow(pbiHwnd, out var renderError, out bool renderedBlank);
+            if (rendered != null && !renderedBlank)
+            {
+                return rendered;
+            }
+
+            // 2. GPU-composited content often comes back black; grab it from the screen.
+            var onScreen = CaptureScreenRegion(rect, paletteHwnd, pbiHwnd, out var screenError);
+            if (onScreen != null && !IsMostlyBlankBmp(onScreen, blackOnly: true))
+            {
+                return onScreen;
+            }
+
+            error = renderError ?? screenError ?? "Power BI window produced an empty capture.";
+            return null;
         }
         catch (Exception ex)
         {
@@ -118,7 +157,13 @@ public static class ScreenCaptureService
 
     public static byte[]? CaptureWindow(IntPtr hWnd, out string? error)
     {
+        return CaptureWindow(hWnd, out error, out _);
+    }
+
+    public static byte[]? CaptureWindow(IntPtr hWnd, out string? error, out bool isBlank)
+    {
         error = null;
+        isBlank = false;
         if (hWnd == IntPtr.Zero)
         {
             error = "Invalid window handle.";
@@ -151,26 +196,17 @@ public static class ScreenCaptureService
 
             if (!success)
             {
-                // Fallback to desktop BitBlt if PrintWindow is unsupported
-                IntPtr hdcDesktop = GetDC(IntPtr.Zero);
-                try
-                {
-                    success = BitBlt(hdcMem, 0, 0, width, height, hdcDesktop, rect.Left, rect.Top, SRCCOPY);
-                }
-                finally
-                {
-                    ReleaseDC(IntPtr.Zero, hdcDesktop);
-                }
-            }
-
-            if (!success)
-            {
                 error = "Failed to copy window graphics buffer.";
                 return null;
             }
 
             // Convert HBITMAP to 32bpp BMP byte array
-            return ConvertHBitmapToBmpBytes(hdcMem, hBitmap, width, height);
+            var bytes = ConvertHBitmapToBmpBytes(hdcMem, hBitmap, width, height);
+            if (bytes != null)
+            {
+                isBlank = IsMostlyBlankBmp(bytes);
+            }
+            return bytes;
         }
         catch (Exception ex)
         {
@@ -183,6 +219,80 @@ public static class ScreenCaptureService
             DeleteObject(hBitmap);
             DeleteDC(hdcMem);
             ReleaseDC(hWnd, hdcWindow);
+        }
+    }
+
+    /// <summary>
+    /// Captures a screen rectangle via BitBlt from the desktop. Hides the palette
+    /// window and brings the target window (targetHwnd) to the foreground first, so
+    /// the grab shows the report rather than whatever happened to be on top.
+    /// </summary>
+    public static byte[]? CaptureScreenRegion(WindowRect rect, IntPtr paletteHwnd, IntPtr targetHwnd, out string? error)
+    {
+        error = null;
+        if (rect.Width <= 0 || rect.Height <= 0)
+        {
+            error = "Invalid capture region.";
+            return null;
+        }
+
+        bool hidden = false;
+        try
+        {
+            if (paletteHwnd != IntPtr.Zero && IsWindowVisible(paletteHwnd))
+            {
+                ShowWindow(paletteHwnd, SW_HIDE);
+                hidden = true;
+            }
+
+            if (targetHwnd != IntPtr.Zero)
+            {
+                ShowWindow(targetHwnd, SW_RESTORE);
+                SetForegroundWindow(targetHwnd);
+            }
+
+            // Let DWM apply the composition/foreground changes before grabbing pixels.
+            DwmFlush();
+            Thread.Sleep(120);
+
+            int width = rect.Width;
+            int height = rect.Height;
+
+            IntPtr hdcScreen = GetDC(IntPtr.Zero);
+            IntPtr hdcMem = CreateCompatibleDC(hdcScreen);
+            IntPtr hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
+            IntPtr hOld = SelectObject(hdcMem, hBitmap);
+
+            try
+            {
+                if (!BitBlt(hdcMem, 0, 0, width, height, hdcScreen, rect.Left, rect.Top, SRCCOPY))
+                {
+                    error = "Failed to copy the screen region.";
+                    return null;
+                }
+
+                return ConvertHBitmapToBmpBytes(hdcMem, hBitmap, width, height);
+            }
+            finally
+            {
+                SelectObject(hdcMem, hOld);
+                DeleteObject(hBitmap);
+                DeleteDC(hdcMem);
+                ReleaseDC(IntPtr.Zero, hdcScreen);
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
+        finally
+        {
+            if (hidden)
+            {
+                ShowWindow(paletteHwnd, SW_SHOW);
+                SetForegroundWindow(paletteHwnd);
+            }
         }
     }
 
@@ -205,6 +315,14 @@ public static class ScreenCaptureService
         byte[] pixelData = new byte[width * height * 4];
         int scanLines = GetDIBits(hdc, hBitmap, 0, (uint)height, pixelData, ref bmi, DIB_RGB_COLORS);
         if (scanLines <= 0) return null;
+
+        // GDI leaves the alpha channel at 0. Windows Imaging Component would then
+        // treat the whole bitmap as fully transparent (rendering as a blank image),
+        // so force every pixel to be opaque.
+        for (int i = 3; i < pixelData.Length; i += 4)
+        {
+            pixelData[i] = 255;
+        }
 
         // Construct standard BMP in-memory stream:
         // BITMAPFILEHEADER (14 bytes) + BITMAPINFOHEADER (40 bytes) + pixel bytes
@@ -239,5 +357,44 @@ public static class ScreenCaptureService
         writer.Write(pixelData);
 
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Returns true when a BMP is almost entirely black, which indicates the capture
+    /// did not actually render the window content. When blackOnly is false, an almost
+    /// entirely white frame is also treated as blank (a PrintWindow failure mode).
+    /// </summary>
+    private static bool IsMostlyBlankBmp(byte[] bmpData, bool blackOnly = false)
+    {
+        const int headerSize = 54;
+        if (bmpData == null || bmpData.Length <= headerSize) return true;
+
+        int pixelBytes = bmpData.Length - headerSize;
+        int pixelCount = pixelBytes / 4;
+        if (pixelCount <= 0) return true;
+
+        // Sample a bounded number of pixels for speed.
+        int step = Math.Max(1, pixelCount / 60000);
+        long sampled = 0, dark = 0, light = 0;
+
+        for (int p = 0; p < pixelCount; p += step)
+        {
+            int i = headerSize + p * 4;
+            if (i + 2 >= bmpData.Length) break;
+            int b = bmpData[i];
+            int g = bmpData[i + 1];
+            int r = bmpData[i + 2];
+            int v = (r + g + b) / 3;
+            sampled++;
+            if (v < 12) dark++;
+            else if (v > 243) light++;
+        }
+
+        if (sampled == 0) return true;
+        double fracDark = (double)dark / sampled;
+        double fracLight = (double)light / sampled;
+        if (fracDark > 0.985) return true;
+        if (!blackOnly && fracLight > 0.995) return true;
+        return false;
     }
 }

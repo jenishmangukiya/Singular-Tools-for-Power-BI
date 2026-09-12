@@ -24,7 +24,7 @@
             </Grid.ColumnDefinitions>
 
             <TextBox x:Name="SearchBox"
-                     PlaceholderText="Type to search pages, or > for commands (>sort az, >sort num, >duplicate, >delete)..."
+                     PlaceholderText="Type to search pages, or > for commands (>sort az, >sort natural, >duplicate, >delete)..."
                      FontSize="15"
                      Height="42"
                      CornerRadius="8"
@@ -74,10 +74,10 @@
                         <TextBlock Text="Reverse" FontSize="12" />
                     </StackPanel>
                 </Button>
-                <ToggleButton x:Name="ExpandPageViewBtn" Click="ExpandPageView_Click" ToolTipService.ToolTip="Toggle live page screenshot and canvas preview">
+                <ToggleButton x:Name="GoToPageBtn" Click="GoToPage_Click" ToolTipService.ToolTip="When on, selecting a page navigates the open Power BI report to that page">
                     <StackPanel Orientation="Horizontal" Spacing="5">
-                        <FontIcon Glyph="&#xE7C5;" FontSize="13" />
-                        <TextBlock Text="Expand Page View" FontSize="12" />
+                        <FontIcon Glyph="&#xE72A;" FontSize="13" />
+                        <TextBlock Text="Go to page in Open Report" FontSize="12" />
                     </StackPanel>
                 </ToggleButton>
                 <Button x:Name="SaveBtn" Click="Save_Click" ToolTipService.ToolTip="Save Order to Power BI Project">
@@ -92,15 +92,9 @@
                        FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="0 pages" />
         </Grid>
 
-        <!-- Main Content Area: Left = Pages List, Right = Live Page Preview -->
+        <!-- Main Content Area: Pages List / Command List -->
         <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LeftPaneCol" Width="*" />
-                <ColumnDefinition x:Name="PreviewPaneCol" Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <!-- Left: Pages List / Command List -->
-            <Border Grid.Column="0" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <Border CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <ListView x:Name="PagesListView"
                           SelectionMode="Single"
                           CanReorderItems="True"
@@ -198,90 +192,6 @@
                     </ListView.ItemTemplate>
                 </ListView>
             </Border>
-
-            <!-- Right: Page Live Screenshot & Preview Pane (Collapsed by default) -->
-            <Grid x:Name="PagePreviewPane" Grid.Column="1" Width="720" Margin="14,0,0,0" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <!-- Preview Header Card -->
-                <Border Grid.Row="0" Margin="0,0,0,10" Padding="14,10" CornerRadius="8" 
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Orientation="Vertical" Spacing="2">
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <TextBlock x:Name="PreviewTitleText" Text="Select a page" FontSize="16" FontWeight="SemiBold" />
-                                <Border x:Name="PreviewActiveBadge" Visibility="Collapsed" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="4" Padding="6,2">
-                                    <TextBlock Text="ACTIVE IN POWER BI" FontSize="10" FontWeight="Bold" Foreground="White" />
-                                </Border>
-                            </StackPanel>
-                            <TextBlock x:Name="PreviewSubtitleText" Text="Resolution: 1920x1080 | 0 visuals" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Button x:Name="CaptureScreenBtn" Click="CaptureScreenBtn_Click" ToolTipService.ToolTip="Capture Live Screenshot from Power BI Desktop">
-                                <StackPanel Orientation="Horizontal" Spacing="5">
-                                    <FontIcon Glyph="&#xE722;" FontSize="12" />
-                                    <TextBlock Text="Capture Live" FontSize="11" />
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="PreviewSetActiveBtn" Click="PreviewSetActiveBtn_Click" ToolTipService.ToolTip="Set this page as active in Power BI">
-                                <StackPanel Orientation="Horizontal" Spacing="5">
-                                    <FontIcon Glyph="&#xE73E;" FontSize="12" />
-                                    <TextBlock Text="Set Active" FontSize="11" />
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- Preview Canvas Viewport Card -->
-                <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource LayerFillColorDefaultBrush}" 
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="8">
-                    <Grid x:Name="PreviewViewportContainer">
-                        <!-- Image Display for Live Screenshot -->
-                        <Image x:Name="PreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
-
-                        <!-- Schematic Canvas Wireframe Fallback -->
-                        <Viewbox x:Name="PreviewWireframeViewbox" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Border x:Name="WireframeCanvasBorder" Width="1280" Height="720" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4">
-                                <Canvas x:Name="WireframeCanvas" Width="1280" Height="720" />
-                            </Border>
-                        </Viewbox>
-
-                        <!-- Status Badge Overlay -->
-                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" CornerRadius="4" Background="#CC000000" Padding="8,4">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="#107C41" />
-                                <TextBlock x:Name="PreviewStatusTag" Text="Blueprint Preview" FontSize="11" Foreground="White" FontWeight="Medium" />
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </Border>
-
-                <!-- Preview Footer / Visuals Summary -->
-                <Border Grid.Row="2" Margin="0,10,0,0" Padding="12,8" CornerRadius="6"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" 
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="PreviewFooterText" Text="Visual Elements: none" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="1" Text="Singular Visual Inspector" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                    </Grid>
-                </Border>
-            </Grid>
         </Grid>
 
         <!-- Footer / Notification Bar -->

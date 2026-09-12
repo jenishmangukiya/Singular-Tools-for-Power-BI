@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -42,6 +43,9 @@ public sealed partial class MainWindow : Window
 
         // Configure AppWindow geometry and behavior
         ConfigureAppWindow();
+
+        // Apply the application icon to the window / taskbar
+        ApplyAppIcon();
 
         // Navigate the root frame to MainPage
         RootFrame.Navigate(typeof(MainPage));
@@ -93,6 +97,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ApplyAppIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (File.Exists(iconPath))
+            {
+                AppWindow?.SetIcon(iconPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"SetIcon warning: {ex.Message}");
+        }
+    }
+
     private void CenterOnScreen()
     {
         if (AppWindow == null) return;
@@ -127,34 +147,12 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    public bool IsExpandedMode { get; private set; } = false;
-
-    public void SetExpandedMode(bool isExpanded)
-    {
-        if (AppWindow == null) return;
-        IsExpandedMode = isExpanded;
-
-        int newWidth = isExpanded ? 1320 : 840;
-        int newHeight = isExpanded ? 680 : 560;
-
-        var currentPos = AppWindow.Position;
-        var currentSize = AppWindow.Size;
-
-        int deltaX = (newWidth - currentSize.Width) / 2;
-        int deltaY = (newHeight - currentSize.Height) / 2;
-
-        int newX = Math.Max(20, currentPos.X - deltaX);
-        int newY = Math.Max(20, currentPos.Y - deltaY);
-
-        AppWindow.MoveAndResize(new RectInt32(newX, newY, newWidth, newHeight));
-    }
-
     public void ShowAndCenterOverPowerBi(WindowRect pbiRect)
     {
         if (AppWindow == null) return;
 
-        int width = IsExpandedMode ? 1320 : 840;
-        int height = IsExpandedMode ? 680 : 560;
+        int width = 840;
+        int height = 560;
 
         int x = pbiRect.Left + (pbiRect.Width - width) / 2;
         int y = pbiRect.Top + (pbiRect.Height - height) / 3;

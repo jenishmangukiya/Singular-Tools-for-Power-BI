@@ -63,8 +63,13 @@ public static class PowerBiDetector
             GetWindowText(hWnd, sb, 512);
             title = sb.ToString();
 
-            if (string.Equals(procName, "PBIDesktop", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains("Power BI", StringComparison.OrdinalIgnoreCase))
+            // Identify Power BI Desktop by its process. The window title alone is not
+            // reliable: other windows (e.g. File Explorer showing a folder whose name
+            // contains "Power BI") would match, while Power BI's own title is
+            // typically just the report name and may not contain "Power BI" at all.
+            bool isPbiProcess = string.Equals(procName, "PBIDesktop", StringComparison.OrdinalIgnoreCase);
+
+            if (isPbiProcess)
             {
                 GetWindowRect(hWnd, out rect);
                 // Filter out zero-sized invisible tooltips/popups
