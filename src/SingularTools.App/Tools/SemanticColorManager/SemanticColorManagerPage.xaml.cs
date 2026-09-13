@@ -23,7 +23,6 @@ public sealed class SemanticColorItem : INotifyPropertyChanged
     public string CurrentColorText { get; init; } = string.Empty;
     public string KindLabel { get; init; } = "Value";
     public bool IsManual { get; init; }
-    public SemanticColorManualValue? Manual { get; init; }
 
     private string _hex = "#118DFF";
     public string Hex
@@ -180,7 +179,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
 
         SummaryText.Text = _items.Count == 0
             ? string.Empty
-            : $"{Plural(_scan.Values.Count, "item")} · {Plural(_scan.VisualCount, "visual")} scanned";
+            : $"{Plural(_scan.Values.Count, "value")} · {Plural(_scan.VisualCount, "visual")} scanned";
 
         UpdateEmptyStates(hasReport);
         UpdateHistoryButtons();
@@ -224,7 +223,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         NoValuesPanel.Visibility = hasReport && !hasItems ? Visibility.Visible : Visibility.Collapsed;
 
         if (ApplyButton != null) ApplyButton.IsEnabled = hasReport && hasItems;
-        if (AddValueButton != null) AddValueButton.IsEnabled = hasReport && _scan?.Fields.Count > 0;
+        if (AddValueButton != null) AddValueButton.IsEnabled = hasReport;
     }
 
     private void UpdateHistoryButtons()
@@ -248,22 +247,12 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             return;
         }
 
-        var assignments = new List<SemanticColorAssignment>();
-        foreach (var item in _items)
-        {
-            if (string.IsNullOrWhiteSpace(item.Hex)) continue;
+        var map = _items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Hex) && !string.IsNullOrWhiteSpace(i.Key))
+            .GroupBy(i => i.Key)
+            .ToDictionary(g => g.Key, g => g.First().Hex);
 
-            if (item.Manual != null)
-            {
-                assignments.Add(new SemanticColorAssignment { Hex = item.Hex, Manual = item.Manual });
-            }
-            else
-            {
-                assignments.Add(new SemanticColorAssignment { Key = item.Key, Hex = item.Hex });
-            }
-        }
-
-        if (assignments.Count == 0)
+        if (map.Count == 0)
         {
             ToastService.Show("No colors to apply.", ToastSeverity.Informational);
             return;
@@ -275,7 +264,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         try
         {
             var result = App.Workspace.ApplyEditWithResult(
-                m => new SemanticColorService().Apply(m, assignments),
+                m => new SemanticColorService().Apply(m, map),
                 managerWritesInternally: true);
 
             if (result.FilesWritten == 0)
@@ -284,10 +273,8 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             }
             else
             {
-                var parts = new List<string> { Plural(result.SelectorsChanged, "selector") };
-                if (result.SelectorsCreated > 0) parts.Add($"{result.SelectorsCreated} added");
                 ToastService.Show(
-                    $"Updated {string.Join(" and ", parts)} across {Plural(result.VisualsChanged, "visual")}.",
+                    $"Updated {Plural(result.SelectorsChanged, "selector")} across {Plural(result.VisualsChanged, "visual")}.",
                     ToastSeverity.Success);
             }
 
@@ -333,26 +320,16 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
 
     private async void AddValue_Click(object sender, RoutedEventArgs e)
     {
-        if (!App.Workspace.HasReport || _scan == null || _scan.Fields.Count == 0)
+        if (!App.Workspace.HasReport)
         {
-            ToastService.Show("Scan a report first.", ToastSeverity.Warning);
+            ToastService.Show("Open a report first.", ToastSeverity.Warning);
             return;
         }
 
-        var fieldCombo = new ComboBox
-        {
-            Header = "Field",
-            ItemsSource = _scan.Fields,
-            DisplayMemberPath = "DisplayName",
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            MinWidth = 320
-        };
-        fieldCombo.SelectedIndex = 0;
-
         var valueBox = new TextBox
         {
-            Header = "Value(s)",
-            PlaceholderText = "e.g. 2014 or Yes (comma-separated)",
+            Header = "Value",
+            PlaceholderText = "e.g. Sometimes or 2015",
             MinWidth = 320
         };
 
@@ -363,24 +340,11 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         {
             FontSize = 12,
             Opacity = 0.75,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            Text = "The color applies to every bar, column and slice already using this value."
         };
 
-        void SyncFieldMode()
-        {
-            var field = fieldCombo.SelectedItem as SemanticColorFieldInfo;
-            var isMember = field == null || field.Kind == SemanticColorTargetKind.MemberValue;
-            valueBox.Visibility = isMember ? Visibility.Visible : Visibility.Collapsed;
-            hint.Text = isMember
-                ? "A new color selector will be added to every visual that uses this field."
-                : "This colors the whole series field using a metadata selector (cartesian charts only).";
-        }
-
-        fieldCombo.SelectionChanged += (_, _) => SyncFieldMode();
-        SyncFieldMode();
-
         var panel = new StackPanel { Spacing = 10 };
-        panel.Children.Add(fieldCombo);
         panel.Children.Add(valueBox);
         panel.Children.Add(picker);
         panel.Children.Add(hint);
@@ -408,92 +372,52 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             return;
         }
 
-        var selectedField = fieldCombo.SelectedItem as SemanticColorFieldInfo;
-        if (selectedField == null) return;
-
-        if (selectedField.Kind == SemanticColorTargetKind.SeriesIdentity)
+        var raw = (valueBox.Text ?? string.Empty).Trim();
+        if (raw.Length == 0)
         {
-            if (string.IsNullOrEmpty(selectedField.QueryRef)) return;
-
-            var manual = new SemanticColorManualValue
-            {
-                Kind = SemanticColorTargetKind.SeriesIdentity,
-                FieldName = selectedField.FieldName,
-                Entity = selectedField.Entity,
-                QueryRef = selectedField.QueryRef
-            };
-
-            var item = new SemanticColorItem
-            {
-                DisplayValue = selectedField.FieldName,
-                KindLabel = "Series",
-                IsManual = true,
-                Manual = manual,
-                DetailText = "New · series",
-                FieldsText = $"queryRef: {selectedField.QueryRef}",
-                CurrentColorText = "Will be added"
-            };
-            item.SetColor(picker.Color);
-            AddManual(item);
+            ToastService.Show("Type a value to add.", ToastSeverity.Warning);
+            return;
         }
-        else
+
+        var key = KeyForTypedValue(raw);
+        if (_items.Any(i => string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase)))
         {
-            var raw = valueBox.Text ?? string.Empty;
-            var parts = raw
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (parts.Count == 0)
-            {
-                ToastService.Show("Type at least one value to add.", ToastSeverity.Warning);
-                return;
-            }
-
-            foreach (var value in parts)
-            {
-                var manual = new SemanticColorManualValue
-                {
-                    Kind = SemanticColorTargetKind.MemberValue,
-                    FieldName = selectedField.FieldName,
-                    Entity = selectedField.Entity,
-                    TemplateJson = selectedField.TemplateJson,
-                    LiteralValue = MakeLiteral(selectedField, value)
-                };
-
-                var item = new SemanticColorItem
-                {
-                    DisplayValue = value,
-                    KindLabel = "Value",
-                    IsManual = true,
-                    Manual = manual,
-                    DetailText = $"New · {selectedField.DisplayName}",
-                    FieldsText = $"Field: {selectedField.DisplayName}",
-                    CurrentColorText = "Will be added"
-                };
-                item.SetColor(picker.Color);
-                AddManual(item);
-            }
+            ToastService.Show($"\u201C{raw}\u201D is already in the list.", ToastSeverity.Informational);
+            return;
         }
+
+        var item = new SemanticColorItem
+        {
+            Key = key,
+            DisplayValue = raw,
+            KindLabel = "Value",
+            IsManual = true,
+            DetailText = "Added",
+            FieldsText = string.Empty,
+            CurrentColorText = "Will be applied"
+        };
+        item.SetColor(picker.Color);
+
+        _manuallyAdded.Add(item);
+        _items.Add(item);
+        UpdateEmptyStates(true);
 
         ToastService.Show("Added to the list. Click Apply to report to write it.", ToastSeverity.Informational);
     }
 
-    private void AddManual(SemanticColorItem item)
+    /// <summary>
+    /// Maps a typed value to the same normalized key the scan uses: numeric input
+    /// (e.g. "2015") matches numeric literals like <c>2015L</c>, otherwise text.
+    /// </summary>
+    private static string KeyForTypedValue(string value)
     {
-        _manuallyAdded.Add(item);
-        _items.Add(item);
-        UpdateEmptyStates(App.Workspace.HasReport);
-    }
-
-    private static string MakeLiteral(SemanticColorFieldInfo field, string value)
-    {
-        if (field.IsNumeric)
+        var trimmed = value.Trim();
+        if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
         {
-            return value + field.NumericSuffix;
+            return "v:" + trimmed.ToLowerInvariant();
         }
 
-        return "'" + value.Replace("'", "''") + "'";
+        return "s:" + trimmed.ToLowerInvariant();
     }
 
     private static ColorPicker BuildPicker(string hex)

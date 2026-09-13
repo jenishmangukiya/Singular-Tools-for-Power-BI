@@ -1,15 +1,15 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
-  "name": "bd2b8a93654b91cb2d78",
+  "name": "03ca28cd972cbd78b638",
   "position": {
-    "x": 0,
-    "y": 0,
-    "z": 1000,
+    "x": 821.39817629179333,
+    "y": 17.507598784194528,
+    "z": 5001,
     "height": 595.258358662614,
     "width": 463.951367781155
   },
   "visual": {
-    "visualType": "hundredPercentStackedBarChart",
+    "visualType": "barChart",
     "query": {
       "queryState": {
         "Category": {
@@ -147,7 +147,7 @@
   "filterConfig": {
     "filters": [
       {
-        "name": "87d11f7fa54e02513e36",
+        "name": "da7a4bdf04c202270822",
         "field": {
           "Column": {
             "Expression": {
@@ -161,7 +161,7 @@
         "type": "Categorical"
       },
       {
-        "name": "2b54a6bc5caaae48997b",
+        "name": "39d365be90e07029076e",
         "field": {
           "Column": {
             "Expression": {
@@ -175,7 +175,7 @@
         "type": "Categorical"
       },
       {
-        "name": "32691197b09ed50a70be",
+        "name": "6e87e8cce920d2d20eb0",
         "field": {
           "Aggregation": {
             "Expression": {

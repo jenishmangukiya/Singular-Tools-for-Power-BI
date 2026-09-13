@@ -115,10 +115,7 @@ public sealed class SemanticColorValue
     /// <summary>Entity (table) the field belongs to, when known.</summary>
     public string Entity { get; set; } = string.Empty;
 
-    /// <summary>Canonical JSON of the selector's Left field expression, used to create new member selectors.</summary>
-    public string? FieldTemplateJson { get; set; }
-
-    /// <summary>True when the user added this item by hand (it may not exist in any selector yet).</summary>
+    /// <summary>True when the user added this value by hand in the tool.</summary>
     public bool IsManual { get; set; }
 
     /// <summary>How many color selectors across the report reference this item.</summary>
@@ -145,68 +142,13 @@ public sealed class SemanticColorValue
     public string KindLabel => Kind == SemanticColorTargetKind.MemberValue ? "Value" : "Series";
 }
 
-/// <summary>A field that can receive a new member value or series color.</summary>
-public sealed class SemanticColorFieldInfo
-{
-    public SemanticColorTargetKind Kind { get; set; } = SemanticColorTargetKind.MemberValue;
-    public string FieldName { get; set; } = string.Empty;
-    public string Entity { get; set; } = string.Empty;
-
-    /// <summary>For member fields: the JSON of the field expression used as a selector's Left.</summary>
-    public string TemplateJson { get; set; } = string.Empty;
-
-    /// <summary>For series-identity fields: the projection queryRef.</summary>
-    public string? QueryRef { get; set; }
-
-    /// <summary>True when sibling member values are numeric (drives typed literal creation).</summary>
-    public bool IsNumeric { get; set; }
-
-    /// <summary>Numeric suffix observed on siblings ("L", "D", "M") so new values keep the same type.</summary>
-    public string NumericSuffix { get; set; } = string.Empty;
-
-    public string DisplayName => string.IsNullOrEmpty(Entity) ? FieldName : $"{FieldName} ({Entity})";
-
-    public override string ToString() => DisplayName;
-}
-
 /// <summary>Result of scanning a report for bar/column/slice legend items.</summary>
 public sealed class SemanticColorScan
 {
     public string ReportPath { get; set; } = string.Empty;
     public List<SemanticColorValue> Values { get; set; } = new();
-    public List<SemanticColorFieldInfo> Fields { get; set; } = new();
     public int VisualCount { get; set; }
     public int TotalSelectors { get; set; }
-}
-
-/// <summary>A user-supplied value/series that should be created in the report.</summary>
-public sealed class SemanticColorManualValue
-{
-    public SemanticColorTargetKind Kind { get; set; } = SemanticColorTargetKind.MemberValue;
-    public string FieldName { get; set; } = string.Empty;
-    public string Entity { get; set; } = string.Empty;
-
-    /// <summary>Raw literal token to write, e.g. <c>'New'</c> or <c>2014L</c>.</summary>
-    public string LiteralValue { get; set; } = string.Empty;
-
-    /// <summary>Field expression template (member kind only).</summary>
-    public string TemplateJson { get; set; } = string.Empty;
-
-    /// <summary>Projection queryRef (series-identity kind only).</summary>
-    public string? QueryRef { get; set; }
-
-    public string Hex { get; set; } = string.Empty;
-}
-
-/// <summary>One color decision: an existing item to recolor and/or a value to create.</summary>
-public sealed class SemanticColorAssignment
-{
-    /// <summary>Existing selector key (member normalized key or series queryRef); null for manual-only.</summary>
-    public string? Key { get; set; }
-
-    public string Hex { get; set; } = string.Empty;
-
-    public SemanticColorManualValue? Manual { get; set; }
 }
 
 /// <summary>Result of applying a value-to-color mapping to a report.</summary>
@@ -214,6 +156,5 @@ public sealed class SemanticColorApplyResult
 {
     public int VisualsChanged { get; set; }
     public int SelectorsChanged { get; set; }
-    public int SelectorsCreated { get; set; }
     public int FilesWritten { get; set; }
 }

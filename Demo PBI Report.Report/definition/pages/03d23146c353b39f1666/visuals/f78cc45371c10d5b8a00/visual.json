@@ -1,15 +1,15 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
-  "name": "bd2b8a93654b91cb2d78",
+  "name": "f78cc45371c10d5b8a00",
   "position": {
-    "x": 0,
-    "y": 0,
-    "z": 1000,
+    "x": 204.25531914893617,
+    "y": 32.097264437689972,
+    "z": 5002,
     "height": 595.258358662614,
     "width": 463.951367781155
   },
   "visual": {
-    "visualType": "hundredPercentStackedBarChart",
+    "visualType": "columnChart",
     "query": {
       "queryState": {
         "Category": {
@@ -22,11 +22,11 @@
                       "Entity": "financials"
                     }
                   },
-                  "Property": "Product"
+                  "Property": "Segment"
                 }
               },
-              "queryRef": "financials.Product",
-              "nativeQueryRef": "Product",
+              "queryRef": "financials.Segment",
+              "nativeQueryRef": "Segment",
               "active": true
             }
           ]
@@ -41,11 +41,11 @@
                       "Entity": "financials"
                     }
                   },
-                  "Property": "Segment"
+                  "Property": "Year"
                 }
               },
-              "queryRef": "financials.Segment",
-              "nativeQueryRef": "Segment"
+              "queryRef": "financials.Year",
+              "nativeQueryRef": "Year"
             }
           ]
         },
@@ -147,35 +147,7 @@
   "filterConfig": {
     "filters": [
       {
-        "name": "87d11f7fa54e02513e36",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Product"
-          }
-        },
-        "type": "Categorical"
-      },
-      {
-        "name": "2b54a6bc5caaae48997b",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Segment"
-          }
-        },
-        "type": "Categorical"
-      },
-      {
-        "name": "32691197b09ed50a70be",
+        "name": "5ddd664e4292d5d47664",
         "field": {
           "Aggregation": {
             "Expression": {
@@ -189,6 +161,34 @@
               }
             },
             "Function": 5
+          }
+        },
+        "type": "Advanced"
+      },
+      {
+        "name": "def9c1b2ab213bb0d8b8",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "financials"
+              }
+            },
+            "Property": "Segment"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "24503d7b963db2140368",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "financials"
+              }
+            },
+            "Property": "Year"
           }
         },
         "type": "Advanced"

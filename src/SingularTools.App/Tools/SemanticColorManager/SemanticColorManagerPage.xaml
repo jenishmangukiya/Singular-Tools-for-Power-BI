@@ -94,7 +94,7 @@
                     Padding="10,0"
                     Click="AddValue_Click"
                     CornerRadius="{StaticResource RadiusMedium}"
-                    ToolTipService.ToolTip="Add a legend value that has no color yet">
+                    ToolTipService.ToolTip="Add a value to predefine its color">
                     <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
                         <FontIcon FontSize="14" Glyph="&#xE710;" />
                         <TextBlock Text="Add value" />
