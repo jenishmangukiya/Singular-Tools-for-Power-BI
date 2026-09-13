@@ -12,6 +12,8 @@ namespace SingularTools.Tests;
 public class SemanticColorServiceTests
 {
     private const string ColoredPage = "03d23146c353b39f1666";
+    private const string BarVisual = "e22efc042b68c0b157de";
+    private const string TableVisual = "9ab413562c85b9b59dcb";
 
     private string GetDemoReportPath()
     {
@@ -27,94 +29,34 @@ public class SemanticColorServiceTests
         return Path.Combine(current, "Demo PBI Report.Report");
     }
 
-    private static string CopyDemoToTemp(string reportPath, string prefix)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
-        CopyDirectory(reportPath, tempDir);
-        return tempDir;
-    }
+    private static string VisualPath(string reportRoot, string visual)
+        => Path.Combine(reportRoot, "definition", "pages", ColoredPage, "visuals", visual, "visual.json");
 
     [Fact]
-    public void Scan_DedupesValuesGloballyAcrossVisuals()
+    public void ApplyRules_RecolorsExistingValues_AndIsIdempotent()
     {
-        var manager = new ReportManager();
-        manager.LoadReport(GetDemoReportPath());
-
-        var scan = new SemanticColorService().Scan(manager);
-
-        // No value appears twice: each normalized key is a single global item.
-        var duplicateKeys = scan.Values
-            .GroupBy(v => v.Key, StringComparer.Ordinal)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-        Assert.Empty(duplicateKeys);
-
-        // 'Velo' is colored in several visuals but listed once, spanning them.
-        var velo = scan.Values.Single(v => v.DisplayValue == "Velo");
-        Assert.Equal(SemanticColorTargetKind.MemberValue, velo.Kind);
-        Assert.True(velo.VisualCount >= 2, $"expected Velo across multiple visuals, got {velo.VisualCount}");
-        Assert.Equal(velo.SelectorCount, velo.VisualCount);
-    }
-
-    [Fact]
-    public void Scan_IgnoresTableVisuals()
-    {
-        var reportPath = GetDemoReportPath();
-        var tempDir = CopyDemoToTemp(reportPath, "PBIR_SemColorTable_");
-
-        try
-        {
-            // The demo 'Discount Band' visual is a table; color a value on it.
-            var tablePath = Path.Combine(
-                tempDir, "definition", "pages", ColoredPage, "visuals", "9ab413562c85b9b59dcb", "visual.json");
-            InjectMemberSelector(tablePath, "financials", "Discount Band", "'ShouldNotAppear'", "#010203");
-
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-
-            var scan = new SemanticColorService().Scan(manager);
-
-            Assert.DoesNotContain(scan.Values, v => v.DisplayValue == "ShouldNotAppear");
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public void Apply_RecolorsEveryMatchingSelector_WithQuotedLiteral_AndIsIdempotent()
-    {
-        var reportPath = GetDemoReportPath();
-        var tempDir = CopyDemoToTemp(reportPath, "PBIR_SemColor_");
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorRecolor_");
 
         try
         {
             var manager = new ReportManager();
             manager.LoadReport(tempDir);
             var service = new SemanticColorService();
+            var rules = new List<SemanticColorRule> { new() { Value = "Velo", Hex = "#00AA00" } };
 
-            var velo = service.Scan(manager).Values.Single(v => v.DisplayValue == "Velo");
+            var result = service.ApplyRules(manager, rules);
 
-            var result = service.Apply(manager, new Dictionary<string, string> { [velo.Key] = "#00AA00" });
+            Assert.True(result.SelectorsChanged >= 7, $"expected the existing Velo selectors to recolor, got {result.SelectorsChanged}");
+            Assert.True(result.FilesWritten >= 7, $"expected most visuals to change, got {result.FilesWritten}");
 
-            Assert.True(result.FilesWritten >= 2);
-            Assert.Equal(result.SelectorsChanged, result.VisualsChanged);
-            Assert.Equal(result.FilesWritten, result.VisualsChanged);
+            var barPath = VisualPath(tempDir, BarVisual);
+            Assert.Contains("#00AA00", File.ReadAllText(barPath));
+            Assert.Contains("#00AA00", BarChartFillFor(barPath, "Product", "'Velo'"));
 
-            // PBIR literal colors require inner single quotes.
-            var changedPath = Path.Combine(
-                tempDir, "definition", "pages", ColoredPage, "visuals", "e22efc042b68c0b157de", "visual.json");
-            Assert.Contains("\"'#00AA00'\"", File.ReadAllText(changedPath));
-
-            var rescanned = service.Scan(manager).Values.Single(v => v.DisplayValue == "Velo");
-            Assert.Equal("#00AA00", rescanned.CommonColor);
-            Assert.False(rescanned.HasConflict);
-
-            // Applying the same mapping again must be a no-op.
-            var second = service.Apply(manager, new Dictionary<string, string> { [velo.Key] = "#00AA00" });
+            var second = service.ApplyRules(manager, rules);
             Assert.Equal(0, second.FilesWritten);
+            Assert.Equal(0, second.SelectorsChanged);
+            Assert.Equal(0, second.SelectorsCreated);
         }
         finally
         {
@@ -123,26 +65,23 @@ public class SemanticColorServiceTests
     }
 
     [Fact]
-    public void Apply_DoesNotTouchVisualsWithoutMatchingSelector()
+    public void ApplyRules_MatchesValuesCaseInsensitively()
     {
-        var reportPath = GetDemoReportPath();
-        var tempDir = CopyDemoToTemp(reportPath, "PBIR_SemColorNoop_");
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorCase_");
 
         try
         {
             var manager = new ReportManager();
             manager.LoadReport(tempDir);
-
-            var untouchedPath = Path.Combine(
-                tempDir, "definition", "pages", ColoredPage, "visuals", "9ab413562c85b9b59dcb", "visual.json");
-            var before = File.ReadAllText(untouchedPath);
-
             var service = new SemanticColorService();
-            var key = SemanticColorService.NormalizeLiteralKey("'NoSuchValue'");
-            var result = service.Apply(manager, new Dictionary<string, string> { [key] = "#123456" });
 
-            Assert.Equal(0, result.FilesWritten);
-            Assert.Equal(before, File.ReadAllText(untouchedPath));
+            var result = service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "velo", Hex = "#ABCDEF" }
+            });
+
+            Assert.True(result.SelectorsChanged >= 7);
+            Assert.Contains("#ABCDEF", File.ReadAllText(VisualPath(tempDir, BarVisual)));
         }
         finally
         {
@@ -151,28 +90,149 @@ public class SemanticColorServiceTests
     }
 
     [Fact]
-    public void Scan_And_Apply_HandlesSeriesMetadataSelector()
+    public void ApplyRules_CreatesSelectorOnTypeCompatibleFieldsOnly()
     {
-        var reportPath = GetDemoReportPath();
-        var tempDir = CopyDemoToTemp(reportPath, "PBIR_SemColorSeries_");
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorCreate_");
 
         try
         {
-            var visualPath = Path.Combine(
-                tempDir, "definition", "pages", ColoredPage, "visuals", "e22efc042b68c0b157de", "visual.json");
-            InjectMetadataSelector(visualPath, "CountNonNull(financials.Date)", "#FF0000");
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            var result = service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "Channel Partner", Hex = "#123456" }
+            });
+
+            Assert.True(result.SelectorsCreated >= 1);
+            Assert.True(result.FilesWritten >= 1);
+
+            var barPath = VisualPath(tempDir, BarVisual);
+            var dataPoints = ReadDataPoints(barPath);
+
+            // Created on the string Category field (Product)...
+            Assert.NotNull(FindMemberSelector(dataPoints, "Product", "'Channel Partner'"));
+
+            // ...but never bound to the numeric Year field.
+            Assert.Null(FindMemberSelector(dataPoints, "Year", "'Channel Partner'"));
+
+            var second = service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "Channel Partner", Hex = "#123456" }
+            });
+            Assert.Equal(0, second.FilesWritten);
+            Assert.Equal(0, second.SelectorsCreated);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ApplyRules_NumericValue_UsesNumericSuffix()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorNumeric_");
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            var result = service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "2015", Hex = "#654321" }
+            });
+
+            Assert.True(result.SelectorsCreated >= 1);
+
+            var dataPoints = ReadDataPoints(VisualPath(tempDir, BarVisual));
+            var numeric = FindMemberSelector(dataPoints, "Year", "2015L");
+            Assert.NotNull(numeric);
+            Assert.Contains("#654321", numeric!.ToJsonString());
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ApplyRules_MatchesSeriesName_WithMetadataSelector()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorSeries_");
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            var result = service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "Count of Date", Hex = "#0F0F0F" }
+            });
+
+            Assert.True(result.SelectorsCreated >= 1);
+
+            var dataPoints = ReadDataPoints(VisualPath(tempDir, BarVisual));
+            Assert.NotNull(FindMetadataSelector(dataPoints, "CountNonNull(financials.Date)"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ApplyRules_IgnoresTableVisuals()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorTable_");
+
+        try
+        {
+            var tablePath = VisualPath(tempDir, TableVisual);
+            InjectMemberSelector(tablePath, "financials", "Product", "'Velo'", "#010203");
 
             var manager = new ReportManager();
             manager.LoadReport(tempDir);
             var service = new SemanticColorService();
 
-            var series = service.Scan(manager).Values.Single(v => v.Kind == SemanticColorTargetKind.SeriesIdentity);
-            Assert.Equal("CountNonNull(financials.Date)", series.Key);
+            var before = File.ReadAllText(tablePath);
+            service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "Velo", Hex = "#00AA00" }
+            });
 
-            var result = service.Apply(manager, new Dictionary<string, string> { [series.Key] = "#ABCDEF" });
+            Assert.Equal(before, File.ReadAllText(tablePath));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
 
-            Assert.Equal(1, result.SelectorsChanged);
-            Assert.Contains("\"'#ABCDEF'\"", File.ReadAllText(visualPath));
+    [Fact]
+    public void GetAppliedColor_ReflectsReportState()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorRead_");
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            Assert.Null(service.GetAppliedColor(manager, "DefinitelyNotPresent"));
+
+            service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "Velo", Hex = "#00AA00" }
+            });
+
+            Assert.Equal("#00AA00", service.GetAppliedColor(manager, "Velo"));
         }
         finally
         {
@@ -181,36 +241,71 @@ public class SemanticColorServiceTests
     }
 
     [Theory]
-    [InlineData("'Yes'", "Yes", "s:yes")]
-    [InlineData("'no'", "no", "s:no")]
-    [InlineData("2013L", "2013", "v:2013")]
-    [InlineData("12.5D", "12.5", "v:12.5")]
-    public void NormalizeLiteral_MapsTokensToDisplayAndKey(string raw, string display, string key)
+    [InlineData("'Yes'", "Yes")]
+    [InlineData("'no'", "no")]
+    [InlineData("2013L", "2013")]
+    [InlineData("12.5D", "12.5")]
+    public void NormalizeLiteralDisplay_MapsTokensToDisplay(string raw, string display)
     {
         Assert.Equal(display, SemanticColorService.NormalizeLiteralDisplay(raw));
-        Assert.Equal(key, SemanticColorService.NormalizeLiteralKey(raw));
+    }
+
+    [Theory]
+    [InlineData(" Yes ", "Yes")]
+    [InlineData("'Yes'", "Yes")]
+    [InlineData("2013L", "2013")]
+    public void NormalizeRuleValue_TrimsQuotesAndSuffixes(string raw, string expected)
+    {
+        Assert.Equal(expected, SemanticColorService.NormalizeRuleValue(raw));
     }
 
     [Fact]
-    public void QuoteColor_WrapsHexInSingleQuotes()
+    public void NormalizeHex_And_QuoteColor()
     {
+        Assert.Equal("#118DFF", SemanticColorService.NormalizeHex("118dff"));
+        Assert.Equal("#118DFF", SemanticColorService.NormalizeHex("'#118dff'"));
         Assert.Equal("'#118DFF'", SemanticColorService.QuoteColor("#118dff"));
         Assert.Equal("'#118DFF'", SemanticColorService.QuoteColor("118DFF"));
     }
 
-    private static void InjectMetadataSelector(string visualPath, string queryRef, string hex)
+    // ------------------------------------------------------------- Helpers
+
+    private static JsonArray ReadDataPoints(string visualPath)
     {
         var root = JsonNode.Parse(File.ReadAllText(visualPath))!;
-        var objects = EnsureObjects(root);
+        return root["visual"]?["objects"]?["dataPoint"]?.AsArray() ?? new JsonArray();
+    }
 
-        var dataPoints = objects["dataPoint"] as JsonArray ?? new JsonArray();
-        objects["dataPoint"] = dataPoints;
+    private static JsonNode? FindMemberSelector(JsonArray dataPoints, string property, string literal)
+    {
+        foreach (var dataPoint in dataPoints)
+        {
+            var comparison = dataPoint?["selector"]?["data"]?[0]?["scopeId"]?["Comparison"];
+            if (comparison == null) continue;
 
-        dataPoints.Add(BuildEntry(
-            new JsonObject { ["metadata"] = queryRef },
-            hex));
+            var left = comparison["Left"]?["Column"]?["Property"]?.ToString();
+            var right = comparison["Right"]?["Literal"]?["Value"]?.ToString();
 
-        File.WriteAllText(visualPath, root.ToJsonString());
+            if (string.Equals(left, property, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(right, literal, StringComparison.Ordinal))
+            {
+                return dataPoint;
+            }
+        }
+
+        return null;
+    }
+
+    private static JsonNode? FindMetadataSelector(JsonArray dataPoints, string queryRef)
+    {
+        return dataPoints.FirstOrDefault(dp =>
+            string.Equals(dp?["selector"]?["metadata"]?.ToString(), queryRef, StringComparison.Ordinal));
+    }
+
+    private static string BarChartFillFor(string visualPath, string property, string literal)
+    {
+        var node = FindMemberSelector(ReadDataPoints(visualPath), property, literal);
+        return node?["properties"]?["fill"]?["solid"]?["color"]?["expr"]?["Literal"]?["Value"]?.ToString() ?? string.Empty;
     }
 
     private static void InjectMemberSelector(
@@ -288,6 +383,28 @@ public class SemanticColorServiceTests
             },
             ["selector"] = selector
         };
+    }
+
+    private static string CopyDemoToTemp(string reportPath, string prefix)
+    {
+        var projectRoot = Directory.GetParent(reportPath)!.FullName;
+        var reportName = Path.GetFileName(reportPath);
+        var tempRoot = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
+
+        CopyDirectory(reportPath, Path.Combine(tempRoot, reportName));
+
+        // The service reads column types from the sibling semantic model, so copy it too.
+        if (reportName.EndsWith(".Report", StringComparison.OrdinalIgnoreCase))
+        {
+            var modelName = reportName.Substring(0, reportName.Length - ".Report".Length) + ".SemanticModel";
+            var modelSource = Path.Combine(projectRoot, modelName);
+            if (Directory.Exists(modelSource))
+            {
+                CopyDirectory(modelSource, Path.Combine(tempRoot, modelName));
+            }
+        }
+
+        return Path.Combine(tempRoot, reportName);
     }
 
     private static void CopyDirectory(string sourceDir, string destinationDir)

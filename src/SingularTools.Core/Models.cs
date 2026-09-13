@@ -81,80 +81,33 @@ public class PageVisualInfo
     public int VisualCount => Visuals.Count;
 }
 
-/// <summary>How a legend item is targeted in a visual's color selector.</summary>
-public enum SemanticColorTargetKind
-{
-    /// <summary>A category/legend member, e.g. Series "2013" or slice "Paseo" (scopeId Comparison selector).</summary>
-    MemberValue,
-
-    /// <summary>A measure/field series identity, e.g. "financials.Revenue" (metadata selector).</summary>
-    SeriesIdentity
-}
-
 /// <summary>
-/// One distinct legend item discovered in a report's visual color selectors.
-/// Member values are global to the report (the same text maps to the same color
-/// everywhere); series identities are matched by their queryRef.
+/// A user-defined semantic color: any legend/category/slice/series string should
+/// be shown in <see cref="Hex"/> across the whole report. Values are matched as
+/// universal strings (case-insensitive, type suffix ignored), independent of the
+/// fields they belong to.
 /// </summary>
-public sealed class SemanticColorValue
+public sealed class SemanticColorRule
 {
-    public SemanticColorTargetKind Kind { get; set; } = SemanticColorTargetKind.MemberValue;
+    /// <summary>Human-readable value to match, e.g. "Channel Partner", "Yes", "2014".</summary>
+    public string Value { get; set; } = string.Empty;
 
-    /// <summary>Stable lookup key: normalized literal for members, queryRef for series identities.</summary>
-    public string Key { get; set; } = string.Empty;
-
-    /// <summary>The literal token exactly as stored, e.g. <c>'Yes'</c> / <c>2013L</c>; or the queryRef.</summary>
-    public string RawValue { get; set; } = string.Empty;
-
-    /// <summary>Human-readable value with quotes/type suffixes removed, e.g. <c>Yes</c> / <c>2013</c>.</summary>
-    public string DisplayValue { get; set; } = string.Empty;
-
-    /// <summary>Field property this item belongs to (e.g. "Year", "Revenue").</summary>
-    public string FieldName { get; set; } = string.Empty;
-
-    /// <summary>Entity (table) the field belongs to, when known.</summary>
-    public string Entity { get; set; } = string.Empty;
-
-    /// <summary>True when the user added this value by hand in the tool.</summary>
-    public bool IsManual { get; set; }
-
-    /// <summary>How many color selectors across the report reference this item.</summary>
-    public int SelectorCount { get; set; }
-
-    /// <summary>Distinct visuals (page/visual) that reference this item.</summary>
-    public List<string> VisualRefs { get; set; } = new();
-
-    /// <summary>Field names projected by the visuals where this item was found.</summary>
-    public List<string> Fields { get; set; } = new();
-
-    /// <summary>Distinct current colors; a literal hex or the word "Theme" for theme-based colors.</summary>
-    public List<string> CurrentColors { get; set; } = new();
-
-    /// <summary>The literal hex shared by every reference, or null when colors conflict or are theme-based.</summary>
-    public string? CommonColor { get; set; }
-
-    public bool HasConflict => CurrentColors.Count > 1;
-
-    public bool HasThemeColor => CurrentColors.Any(c => string.Equals(c, "Theme", StringComparison.OrdinalIgnoreCase));
-
-    public int VisualCount => VisualRefs.Count;
-
-    public string KindLabel => Kind == SemanticColorTargetKind.MemberValue ? "Value" : "Series";
+    /// <summary>Target color in "#RRGGBB" form.</summary>
+    public string Hex { get; set; } = string.Empty;
 }
 
-/// <summary>Result of scanning a report for bar/column/slice legend items.</summary>
-public sealed class SemanticColorScan
-{
-    public string ReportPath { get; set; } = string.Empty;
-    public List<SemanticColorValue> Values { get; set; } = new();
-    public int VisualCount { get; set; }
-    public int TotalSelectors { get; set; }
-}
-
-/// <summary>Result of applying a value-to-color mapping to a report.</summary>
+/// <summary>Result of applying semantic color rules to a report.</summary>
 public sealed class SemanticColorApplyResult
 {
+    /// <summary>Distinct visuals whose definition file was rewritten.</summary>
     public int VisualsChanged { get; set; }
+
+    /// <summary>Existing color selectors that were recolored.</summary>
     public int SelectorsChanged { get; set; }
+
+    /// <summary>New color selectors that were created.</summary>
+    public int SelectorsCreated { get; set; }
+
+    /// <summary>Files written to disk.</summary>
     public int FilesWritten { get; set; }
 }

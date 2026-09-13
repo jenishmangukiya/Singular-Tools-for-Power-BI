@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,26 +11,27 @@ using SingularTools.Core.Models;
 namespace SingularTools.Core;
 
 /// <summary>
-/// Reads and writes the legend/series/slice colors of a report's visuals directly
-/// in the PBIR definition files. These are the colors behind the format pane's
+/// Applies user-defined semantic colors to a report's visuals directly in the
+/// PBIR definition files. These are the colors behind the format pane's
 /// <b>Columns / Bars / Slices → Apply settings to → Color</b> control and live in
 /// <c>visual.objects.dataPoint</c> as one of two selector shapes:
 ///
 /// <list type="bullet">
 ///   <item>a <b>member value</b> — <c>selector.data[].scopeId.Comparison</c> with a
-///   <c>Right.Literal.Value</c> (e.g. Series "2013", slice "Velo");</item>
+///   <c>Right.Literal.Value</c> (e.g. Series "2013", slice "Paseo");</item>
 ///   <item>a <b>series identity</b> — <c>selector.metadata</c> keyed by the field's
 ///   queryRef (e.g. "financials.Revenue").</item>
 /// </list>
 ///
-/// Member values are aggregated globally: the same text is one item across the
-/// whole report, and applying its color recolors every bar/column/slice that uses
-/// it. Only values that already carry a selector exist in the definition files and
-/// can therefore be discovered; tables and other non-chart visuals are ignored.
+/// A rule is just a display string and a color; it is matched against every
+/// non-table visual without the caller knowing any field. Existing selectors with
+/// that value are recolored, and selectors that do not exist yet are created on
+/// every projected member field whose type fits the value (string vs numeric).
+/// Tables and other non-chart visuals are ignored.
 /// </summary>
 public sealed class SemanticColorService
 {
-    /// <summary>Palette used to seed the picker when a value has no literal color yet.</summary>
+    /// <summary>Palette used to seed new rules when the user has not picked a color.</summary>
     public static readonly string[] DefaultPalette =
     {
         "#118DFF", "#12239E", "#E66C37", "#6B007B",
@@ -52,117 +54,40 @@ public sealed class SemanticColorService
         "pageNavigator", "qnaVisual", "map", "filledMap", "azureMap", "esriVisual"
     };
 
-    // ---------------------------------------------------------------- Scan
-
-    /// <summary>
-    /// Scans every color-capable chart in the report and returns the distinct legend
-    /// values used by their color selectors, aggregated globally across visuals.
-    /// </summary>
-    public SemanticColorScan Scan(ReportManager manager)
+    private static readonly HashSet<string> MemberRoles = new(StringComparer.OrdinalIgnoreCase)
     {
-        var scan = new SemanticColorScan { ReportPath = manager.ReportFolderPath };
-        var pagesDir = manager.PagesDirectoryPath;
-        if (string.IsNullOrEmpty(pagesDir) || !Directory.Exists(pagesDir))
-        {
-            return scan;
-        }
+        "Category", "Series", "Legend", "Rows", "Group"
+    };
 
-        var values = new Dictionary<string, SemanticColorValue>(StringComparer.Ordinal);
+    private static readonly HashSet<string> SeriesRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Y", "Y2", "ColumnY", "LineY", "Series", "X", "Size"
+    };
 
-        foreach (var visualPath in EnumerateVisualFiles(pagesDir))
-        {
-            JsonNode? root;
-            try
-            {
-                root = JsonNode.Parse(File.ReadAllText(visualPath));
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (root == null) continue;
-
-            var visualType = root["visual"]?["visualType"]?.ToString() ?? string.Empty;
-            if (!IsScannableVisual(visualType)) continue;
-
-            scan.VisualCount++;
-
-            var visualRef = MakeVisualRef(pagesDir, visualPath);
-            var fieldNames = ExtractProjectionNames(root);
-
-            var dataPoints = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
-            if (dataPoints == null) continue;
-
-            foreach (var dataPoint in dataPoints)
-            {
-                if (dataPoint is not JsonObject entry) continue;
-
-                var selector = entry["selector"];
-                var color = ParseColorDisplay(entry["properties"]?["fill"]?["solid"]?["color"]?["expr"]);
-                var metadata = selector?["metadata"]?.ToString();
-
-                if (!string.IsNullOrEmpty(metadata))
-                {
-                    var series = GetOrAddSeries(values, metadata);
-                    Accumulate(series, visualRef, fieldNames, color);
-                    scan.TotalSelectors++;
-                    continue;
-                }
-
-                foreach (var literal in ExtractEqualityLiterals(selector))
-                {
-                    var key = NormalizeLiteralKey(literal.Value);
-                    if (key.Length == 0) continue;
-
-                    var value = GetOrAddMember(values, key, literal);
-                    Accumulate(value, visualRef, fieldNames, color);
-                    scan.TotalSelectors++;
-                }
-            }
-        }
-
-        scan.Values = values.Values
-            .OrderBy(v => v.Kind)
-            .ThenByDescending(v => v.SelectorCount)
-            .ThenBy(v => v.DisplayValue, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-
-        foreach (var value in scan.Values)
-        {
-            value.CommonColor = value.CurrentColors.Count == 1 && IsHexColor(value.CurrentColors[0])
-                ? NormalizeHex(value.CurrentColors[0])
-                : null;
-        }
-
-        return scan;
-    }
+    private static readonly ConcurrentDictionary<string, Dictionary<string, string>> TypeCache = new();
 
     // --------------------------------------------------------------- Apply
 
     /// <summary>
-    /// Recolors every existing selector that matches one of the supplied item keys,
-    /// across all color-capable visuals. Writes are atomic and skipped when nothing
-    /// changes.
+    /// Applies every rule across each non-table visual: existing selectors whose
+    /// value matches are recolored, and missing selectors are created on every
+    /// type-compatible projected member field. Writes are atomic and only happen
+    /// when something actually changed, so repeated runs are idempotent.
     /// </summary>
-    public SemanticColorApplyResult Apply(ReportManager manager, IReadOnlyDictionary<string, string> valueColors)
+    public SemanticColorApplyResult ApplyRules(ReportManager manager, IReadOnlyList<SemanticColorRule> rules)
     {
         var result = new SemanticColorApplyResult();
         var pagesDir = manager.PagesDirectoryPath;
-        if (valueColors == null || valueColors.Count == 0 ||
+        if (rules == null || rules.Count == 0 ||
             string.IsNullOrEmpty(pagesDir) || !Directory.Exists(pagesDir))
         {
             return result;
         }
 
-        var lookup = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var pair in valueColors)
-        {
-            if (string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value)) continue;
-            lookup[pair.Key] = NormalizeHex(pair.Value);
-        }
+        var normalized = NormalizeRules(rules);
+        if (normalized.Count == 0) return result;
 
-        if (lookup.Count == 0) return result;
+        var columnTypes = LoadColumnTypes(manager.ReportFolderPath);
 
         foreach (var visualPath in EnumerateVisualFiles(pagesDir))
         {
@@ -181,19 +106,60 @@ public sealed class SemanticColorService
             var visualType = root["visual"]?["visualType"]?.ToString() ?? string.Empty;
             if (!IsScannableVisual(visualType)) continue;
 
-            var dataPoints = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
-            if (dataPoints == null) continue;
+            var projections = ExtractProjections(root);
+            var memberFields = BuildMemberFields(projections, columnTypes);
+            var measureFields = BuildMeasureFields(projections);
+
+            if (memberFields.Count == 0 && measureFields.Count == 0 &&
+                root["visual"]?["objects"]?["dataPoint"] == null)
+            {
+                continue;
+            }
 
             var changed = false;
 
-            foreach (var dataPoint in dataPoints)
+            foreach (var rule in normalized)
             {
-                if (dataPoint is not JsonObject entry) continue;
-                if (!TryMatchKey(entry, lookup, out var hex) || hex == null) continue;
-                if (SetFillColor(entry, hex))
+                var dataPoints = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
+
+                if (dataPoints != null)
                 {
-                    result.SelectorsChanged++;
-                    changed = true;
+                    foreach (var dataPoint in dataPoints)
+                    {
+                        if (dataPoint is not JsonObject entry) continue;
+                        if (!SelectorTargetsValue(entry["selector"], measureFields, rule.Value)) continue;
+                        if (SetFillColor(entry, rule.Hex))
+                        {
+                            result.SelectorsChanged++;
+                            changed = true;
+                        }
+                    }
+                }
+
+                foreach (var field in memberFields)
+                {
+                    if (!ValueFitsField(field, rule.Value)) continue;
+
+                    var literal = FormatLiteral(field, rule.Value);
+                    if (MemberSelectorExists(dataPoints, field.Entity, field.Property, literal)) continue;
+                    if (CreateMemberSelector(root, field, literal, rule.Hex))
+                    {
+                        result.SelectorsCreated++;
+                        changed = true;
+                    }
+                }
+
+                foreach (var field in measureFields)
+                {
+                    if (!MeasureMatches(field, rule.Value)) continue;
+
+                    var current = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
+                    if (MetadataSelectorExists(current, field.QueryRef)) continue;
+                    if (CreateMetadataSelector(root, field.QueryRef, rule.Hex))
+                    {
+                        result.SelectorsCreated++;
+                        changed = true;
+                    }
                 }
             }
 
@@ -210,21 +176,236 @@ public sealed class SemanticColorService
         return result;
     }
 
-    private static bool TryMatchKey(JsonObject dataPoint, Dictionary<string, string> lookup, out string? hex)
+    /// <summary>
+    /// Returns the color currently applied to a value across the report's non-table
+    /// visuals, or null when no selector references it yet. Used to keep the tool's
+    /// rule list in sync after undo/redo restores a previous report state.
+    /// </summary>
+    public string? GetAppliedColor(ReportManager manager, string value)
     {
-        hex = string.Empty;
+        var pagesDir = manager.PagesDirectoryPath;
+        if (string.IsNullOrEmpty(pagesDir) || !Directory.Exists(pagesDir)) return null;
 
-        var metadata = dataPoint["selector"]?["metadata"]?.ToString();
-        if (!string.IsNullOrEmpty(metadata))
+        var normalized = NormalizeRuleValue(value);
+        if (normalized.Length == 0) return null;
+
+        var colors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var visualPath in EnumerateVisualFiles(pagesDir))
         {
-            return lookup.TryGetValue(metadata, out hex);
+            JsonNode? root;
+            try
+            {
+                root = JsonNode.Parse(File.ReadAllText(visualPath));
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (root == null) continue;
+
+            var visualType = root["visual"]?["visualType"]?.ToString() ?? string.Empty;
+            if (!IsScannableVisual(visualType)) continue;
+
+            var dataPoints = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
+            if (dataPoints == null) continue;
+
+            var measureFields = BuildMeasureFields(ExtractProjections(root));
+
+            foreach (var dataPoint in dataPoints)
+            {
+                if (dataPoint is not JsonObject entry) continue;
+                if (!SelectorTargetsValue(entry["selector"], measureFields, normalized)) continue;
+
+                var literal = entry["properties"]?["fill"]?["solid"]?["color"]?["expr"]?["Literal"]?["Value"]?.ToString();
+                var hex = NormalizeHex(literal);
+                if (hex.Length == 0) continue;
+
+                colors[hex] = colors.TryGetValue(hex, out var count) ? count + 1 : 1;
+            }
         }
 
-        foreach (var literal in ExtractEqualityLiterals(dataPoint["selector"]))
+        return colors.Count == 0
+            ? null
+            : colors.OrderByDescending(pair => pair.Value).First().Key;
+    }
+
+    private static List<SemanticColorRule> NormalizeRules(IReadOnlyList<SemanticColorRule> rules)
+    {
+        var result = new List<SemanticColorRule>();
+        var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rule in rules)
         {
-            if (lookup.TryGetValue(NormalizeLiteralKey(literal.Value), out hex))
+            if (rule == null) continue;
+
+            var value = NormalizeRuleValue(rule.Value);
+            if (value.Length == 0) continue;
+
+            var hex = NormalizeHex(rule.Hex);
+            if (hex.Length == 0) continue;
+
+            if (seen.TryGetValue(value, out var index))
+            {
+                result[index] = new SemanticColorRule { Value = value, Hex = hex };
+                continue;
+            }
+
+            seen[value] = result.Count;
+            result.Add(new SemanticColorRule { Value = value, Hex = hex });
+        }
+
+        return result;
+    }
+
+    private static bool SelectorTargetsValue(
+        JsonNode? selector, List<MeasureField> measureFields, string value)
+    {
+        if (selector == null) return false;
+
+        foreach (var literal in ExtractEqualityLiterals(selector))
+        {
+            if (ValueEquals(literal.Value, value)) return true;
+        }
+
+        var metadata = selector["metadata"]?.ToString();
+        if (!string.IsNullOrEmpty(metadata))
+        {
+            if (ValueEquals(metadata, value)) return true;
+
+            var field = measureFields.FirstOrDefault(m =>
+                string.Equals(m.QueryRef, metadata, StringComparison.Ordinal));
+            if (field != null && (ValueEquals(field.NativeName, value) || ValueEquals(field.Property, value)))
             {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ValueFitsField(MemberField field, string value)
+    {
+        if (!field.IsNumeric) return true;
+        return double.TryParse(value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out _);
+    }
+
+    private static string FormatLiteral(MemberField field, string value)
+    {
+        if (field.IsNumeric)
+        {
+            var suffix = field.NumericSuffix;
+            if (string.IsNullOrEmpty(suffix)) suffix = value.Contains('.') ? "D" : "L";
+            return value + suffix;
+        }
+
+        return "'" + value.Replace("'", "''") + "'";
+    }
+
+    private static bool CreateMemberSelector(JsonNode root, MemberField field, string literal, string hex)
+    {
+        JsonNode? left;
+        try
+        {
+            left = JsonNode.Parse(field.FieldJson);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (left == null) return false;
+
+        var dataPoints = EnsureDataPointArray(root);
+        if (dataPoints == null) return false;
+
+        var selector = new JsonObject
+        {
+            ["data"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["scopeId"] = new JsonObject
+                    {
+                        ["Comparison"] = new JsonObject
+                        {
+                            ["ComparisonKind"] = 0,
+                            ["Left"] = left,
+                            ["Right"] = new JsonObject
+                            {
+                                ["Literal"] = new JsonObject { ["Value"] = literal }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        dataPoints.Add(BuildFillEntry(selector, hex));
+        return true;
+    }
+
+    private static bool CreateMetadataSelector(JsonNode root, string queryRef, string hex)
+    {
+        var dataPoints = EnsureDataPointArray(root);
+        if (dataPoints == null) return false;
+
+        dataPoints.Add(BuildFillEntry(new JsonObject { ["metadata"] = queryRef }, hex));
+        return true;
+    }
+
+    private static JsonObject BuildFillEntry(JsonObject selector, string hex)
+    {
+        return new JsonObject
+        {
+            ["properties"] = new JsonObject
+            {
+                ["fill"] = new JsonObject
+                {
+                    ["solid"] = new JsonObject
+                    {
+                        ["color"] = new JsonObject
+                        {
+                            ["expr"] = new JsonObject
+                            {
+                                ["Literal"] = new JsonObject { ["Value"] = QuoteColor(hex) }
+                            }
+                        }
+                    }
+                }
+            },
+            ["selector"] = selector
+        };
+    }
+
+    private static bool MetadataSelectorExists(JsonArray? dataPoints, string queryRef)
+    {
+        if (dataPoints == null) return false;
+
+        return dataPoints.Any(dp =>
+            dp is JsonObject entry &&
+            string.Equals(entry["selector"]?["metadata"]?.ToString(), queryRef, StringComparison.Ordinal));
+    }
+
+    private static bool MemberSelectorExists(
+        JsonArray? dataPoints, string entity, string property, string literal)
+    {
+        if (dataPoints == null) return false;
+
+        foreach (var dataPoint in dataPoints)
+        {
+            if (dataPoint is not JsonObject entry) continue;
+            foreach (var existing in ExtractEqualityLiterals(entry["selector"]))
+            {
+                if (string.Equals(existing.Value, literal, StringComparison.Ordinal) &&
+                    string.Equals(existing.Property, property, StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrEmpty(entity) ||
+                     string.Equals(existing.Entity, entity, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
             }
         }
 
@@ -252,6 +433,25 @@ public sealed class SemanticColorService
         return true;
     }
 
+    private static JsonArray? EnsureDataPointArray(JsonNode root)
+    {
+        if (root["visual"] is not JsonObject visual) return null;
+
+        if (visual["objects"] is not JsonObject objects)
+        {
+            objects = new JsonObject();
+            visual["objects"] = objects;
+        }
+
+        if (objects["dataPoint"] is not JsonArray dataPoint)
+        {
+            dataPoint = new JsonArray();
+            objects["dataPoint"] = dataPoint;
+        }
+
+        return dataPoint;
+    }
+
     private static JsonObject EnsureObject(JsonObject parent, string key)
     {
         if (parent[key] is JsonObject existing) return existing;
@@ -261,73 +461,82 @@ public sealed class SemanticColorService
         return created;
     }
 
-    // ------------------------------------------------------------- Parsing
+    // ------------------------------------------------------------- Fields
 
-    private static SemanticColorValue GetOrAddMember(
-        Dictionary<string, SemanticColorValue> map, string key, SelectorLiteral literal)
+    private static List<MemberField> BuildMemberFields(
+        List<ProjectionInfo> projections, Dictionary<string, string> columnTypes)
     {
-        if (map.TryGetValue(key, out var existing)) return existing;
+        var result = new List<MemberField>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var value = new SemanticColorValue
+        foreach (var projection in projections)
         {
-            Kind = SemanticColorTargetKind.MemberValue,
-            Key = key,
-            RawValue = literal.Value,
-            DisplayValue = NormalizeLiteralDisplay(literal.Value),
-            FieldName = literal.Property,
-            Entity = literal.Entity
-        };
-        map[key] = value;
-        return value;
-    }
-
-    private static SemanticColorValue GetOrAddSeries(Dictionary<string, SemanticColorValue> map, string queryRef)
-    {
-        if (map.TryGetValue(queryRef, out var existing)) return existing;
-
-        var (entity, property) = SplitQueryRef(queryRef);
-        var value = new SemanticColorValue
-        {
-            Kind = SemanticColorTargetKind.SeriesIdentity,
-            Key = queryRef,
-            RawValue = queryRef,
-            DisplayValue = property.Length > 0 ? property : queryRef,
-            FieldName = property,
-            Entity = entity
-        };
-        map[queryRef] = value;
-        return value;
-    }
-
-    private static void Accumulate(
-        SemanticColorValue value, string visualRef, List<string> fieldNames, string? color)
-    {
-        value.SelectorCount++;
-
-        if (!value.VisualRefs.Contains(visualRef, StringComparer.OrdinalIgnoreCase))
-        {
-            value.VisualRefs.Add(visualRef);
-        }
-
-        foreach (var field in fieldNames)
-        {
-            if (!value.Fields.Contains(field, StringComparer.OrdinalIgnoreCase))
+            if (projection.IsMeasure || string.IsNullOrEmpty(projection.Property) ||
+                projection.FieldJson == null || !MemberRoles.Contains(projection.Role))
             {
-                value.Fields.Add(field);
+                continue;
             }
+
+            var key = projection.Entity + "|" + projection.Property;
+            if (!seen.Add(key)) continue;
+
+            var hasType = columnTypes.TryGetValue(key, out var dataType);
+            var numeric = hasType && IsNumericType(dataType!);
+
+            result.Add(new MemberField
+            {
+                Entity = projection.Entity,
+                Property = projection.Property,
+                FieldJson = projection.FieldJson!,
+                IsNumeric = numeric,
+                NumericSuffix = numeric ? SuffixForType(dataType!) : string.Empty
+            });
         }
 
-        if (!string.IsNullOrEmpty(color) &&
-            !value.CurrentColors.Contains(color, StringComparer.OrdinalIgnoreCase))
-        {
-            value.CurrentColors.Add(color);
-        }
+        return result;
     }
 
-    private static List<string> ExtractProjectionNames(JsonNode root)
+    private static List<MeasureField> BuildMeasureFields(List<ProjectionInfo> projections)
     {
-        var names = new List<string>();
-        if (root["visual"]?["query"]?["queryState"] is not JsonObject queryState) return names;
+        var result = new List<MeasureField>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var projection in projections)
+        {
+            if (!projection.IsMeasure || string.IsNullOrEmpty(projection.QueryRef) ||
+                !SeriesRoles.Contains(projection.Role))
+            {
+                continue;
+            }
+
+            if (!seen.Add(projection.QueryRef)) continue;
+
+            result.Add(new MeasureField
+            {
+                QueryRef = projection.QueryRef,
+                Property = projection.Property,
+                NativeName = projection.NativeQueryRef ?? string.Empty
+            });
+        }
+
+        return result;
+    }
+
+    private static bool MeasureMatches(MeasureField field, string value)
+    {
+        return ValueEquals(field.NativeName, value) ||
+               ValueEquals(field.Property, value) ||
+               ValueEquals(field.QueryRef, value);
+    }
+
+    private static bool ValueEquals(string? raw, string value) =>
+        !string.IsNullOrEmpty(raw) &&
+        string.Equals(NormalizeLiteralDisplay(raw), value, StringComparison.OrdinalIgnoreCase);
+
+    private static List<ProjectionInfo> ExtractProjections(JsonNode root)
+    {
+        var result = new List<ProjectionInfo>();
+        if (root["visual"]?["query"]?["queryState"] is not JsonObject queryState) return result;
 
         foreach (var role in queryState)
         {
@@ -337,20 +546,24 @@ public sealed class SemanticColorService
             foreach (var projection in projections)
             {
                 var field = projection?["field"];
-                var property = field?["Column"]?["Property"]?.ToString()
-                               ?? field?["Measure"]?["Property"]?.ToString()
-                               ?? field?["Aggregation"]?["Expression"]?["Column"]?["Property"]?.ToString()
-                               ?? field?["Hierarchy"]?["Hierarchy"]?.ToString();
+                if (field == null) continue;
 
-                if (!string.IsNullOrEmpty(property) &&
-                    !names.Contains(property, StringComparer.OrdinalIgnoreCase))
+                TryGetFieldIdentity(field, out var entity, out var property);
+
+                result.Add(new ProjectionInfo
                 {
-                    names.Add(property);
-                }
+                    Role = role.Key,
+                    Entity = entity,
+                    Property = property,
+                    QueryRef = projection?["queryRef"]?.ToString(),
+                    NativeQueryRef = projection?["nativeQueryRef"]?.ToString(),
+                    FieldJson = field.ToJsonString(),
+                    IsMeasure = field["Measure"] != null || field["Aggregation"] != null
+                });
             }
         }
 
-        return names;
+        return result;
     }
 
     private static bool TryGetFieldIdentity(JsonNode? field, out string entity, out string property)
@@ -382,24 +595,6 @@ public sealed class SemanticColorService
         }
 
         return property.Length > 0;
-    }
-
-    private static (string Entity, string Property) SplitQueryRef(string queryRef)
-    {
-        var working = queryRef;
-        var open = working.IndexOf('(');
-        if (open >= 0 && working.EndsWith(")", StringComparison.Ordinal))
-        {
-            working = working.Substring(open + 1, working.Length - open - 2);
-        }
-
-        var dot = working.LastIndexOf('.');
-        if (dot >= 0 && dot < working.Length - 1)
-        {
-            return (working.Substring(0, dot), working.Substring(dot + 1));
-        }
-
-        return (string.Empty, working);
     }
 
     private readonly record struct SelectorLiteral(
@@ -437,9 +632,8 @@ public sealed class SemanticColorService
                 var literal = comparison["Right"]?["Literal"]?["Value"]?.ToString();
                 if (!string.IsNullOrEmpty(literal))
                 {
-                    var entity = string.Empty;
-                    var property = string.Empty;
-                    TryGetFieldIdentity(comparison["Left"], out entity, out property);
+                    var left = comparison["Left"];
+                    TryGetFieldIdentity(left, out var entity, out var property);
 
                     result.Add(new SelectorLiteral(literal, entity, property));
                 }
@@ -459,20 +653,89 @@ public sealed class SemanticColorService
         if (inner != null) CollectFromScope(inner, result);
     }
 
-    private static string? ParseColorDisplay(JsonNode? expr)
-    {
-        if (expr == null) return null;
+    // --------------------------------------------------- Semantic model types
 
-        var literal = expr["Literal"]?["Value"]?.ToString();
-        if (!string.IsNullOrEmpty(literal))
+    private static Dictionary<string, string> LoadColumnTypes(string reportFolder)
+    {
+        if (string.IsNullOrEmpty(reportFolder)) return new Dictionary<string, string>();
+        return TypeCache.GetOrAdd(reportFolder, LoadColumnTypesCore);
+    }
+
+    private static Dictionary<string, string> LoadColumnTypesCore(string reportFolder)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
         {
-            var cleaned = NormalizeHex(literal);
-            return cleaned.Length > 0 ? cleaned : literal;
+            var parent = Directory.GetParent(reportFolder)?.FullName;
+            if (parent == null) return result;
+
+            string? modelDir = null;
+            var baseName = Path.GetFileName(reportFolder);
+            if (baseName.EndsWith(".Report", StringComparison.OrdinalIgnoreCase))
+            {
+                var candidate = Path.Combine(
+                    parent, baseName.Substring(0, baseName.Length - ".Report".Length) + ".SemanticModel");
+                if (Directory.Exists(candidate)) modelDir = candidate;
+            }
+
+            modelDir ??= Directory.GetDirectories(parent, "*.SemanticModel").FirstOrDefault();
+            if (modelDir == null) return result;
+
+            var tablesDir = Path.Combine(modelDir, "definition", "tables");
+            if (!Directory.Exists(tablesDir)) return result;
+
+            foreach (var file in Directory.GetFiles(tablesDir, "*.tmdl"))
+            {
+                ParseTmdl(file, result);
+            }
+        }
+        catch
+        {
+            // Best effort only; the type hint is optional.
         }
 
-        if (expr["ThemeDataColor"] != null) return "Theme";
+        return result;
+    }
 
-        return null;
+    private static void ParseTmdl(string path, Dictionary<string, string> result)
+    {
+        var table = string.Empty;
+        var column = string.Empty;
+
+        foreach (var raw in File.ReadLines(path))
+        {
+            var line = raw.TrimEnd();
+            var trimmed = line.TrimStart();
+
+            if (trimmed.StartsWith("table ", StringComparison.Ordinal))
+            {
+                table = trimmed.Substring("table ".Length).Trim().Trim('\'', '"');
+                column = string.Empty;
+            }
+            else if (trimmed.StartsWith("column ", StringComparison.Ordinal))
+            {
+                column = trimmed.Substring("column ".Length).Trim().Trim('\'', '"');
+            }
+            else if (trimmed.StartsWith("dataType:", StringComparison.Ordinal) &&
+                     table.Length > 0 && column.Length > 0)
+            {
+                var dataType = trimmed.Substring("dataType:".Length).Trim();
+                result[table + "|" + column] = dataType;
+            }
+        }
+    }
+
+    private static bool IsNumericType(string dataType) =>
+        dataType.Equals("int64", StringComparison.OrdinalIgnoreCase) ||
+        dataType.Equals("double", StringComparison.OrdinalIgnoreCase) ||
+        dataType.Equals("decimal", StringComparison.OrdinalIgnoreCase);
+
+    private static string SuffixForType(string dataType)
+    {
+        if (dataType.Equals("int64", StringComparison.OrdinalIgnoreCase)) return "L";
+        if (dataType.Equals("double", StringComparison.OrdinalIgnoreCase)) return "D";
+        if (dataType.Equals("decimal", StringComparison.OrdinalIgnoreCase)) return "M";
+        return string.Empty;
     }
 
     // ------------------------------------------------------- Normalization
@@ -501,19 +764,14 @@ public sealed class SemanticColorService
         return raw;
     }
 
-    /// <summary>Builds a stable, global lookup key for a stored literal token.</summary>
-    public static string NormalizeLiteralKey(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return string.Empty;
-        var isString = raw.Length >= 2 && raw[0] == '\'';
-        var display = NormalizeLiteralDisplay(raw);
-        return (isString ? "s:" : "v:") + display.ToLowerInvariant();
-    }
+    /// <summary>Normalizes a user-entered value: trims it and removes quotes / numeric suffixes.</summary>
+    public static string NormalizeRuleValue(string? raw) =>
+        NormalizeLiteralDisplay((raw ?? string.Empty).Trim());
 
     /// <summary>Normalizes a hex string to the "#RRGGBB" form, using single quotes for the report.</summary>
-    public static string NormalizeHex(string value)
+    public static string NormalizeHex(string? value)
     {
-        var hex = value.Trim().Trim('\'', '"');
+        var hex = (value ?? string.Empty).Trim().Trim('\'', '"');
         if (hex.Length == 0) return hex;
         if (hex[0] != '#') hex = "#" + hex;
         return hex.ToUpperInvariant();
@@ -521,8 +779,6 @@ public sealed class SemanticColorService
 
     /// <summary>Wraps a hex color in the single quotes PBIR literal values require.</summary>
     public static string QuoteColor(string hex) => "'" + NormalizeHex(hex) + "'";
-
-    private static bool IsHexColor(string value) => value.StartsWith("#", StringComparison.Ordinal);
 
     private static string NumericSuffixOf(string raw)
     {
@@ -541,13 +797,6 @@ public sealed class SemanticColorService
 
     // -------------------------------------------------------------- Files
 
-    private static string MakeVisualRef(string pagesDir, string visualPath)
-    {
-        var directory = Path.GetDirectoryName(visualPath) ?? visualPath;
-        var relative = Path.GetRelativePath(pagesDir, directory);
-        return relative.Replace('\\', '/');
-    }
-
     private static IEnumerable<string> EnumerateVisualFiles(string pagesDir)
     {
         foreach (var pageDir in Directory.EnumerateDirectories(pagesDir))
@@ -561,5 +810,32 @@ public sealed class SemanticColorService
                 if (File.Exists(file)) yield return file;
             }
         }
+    }
+
+    private sealed class ProjectionInfo
+    {
+        public string Role { get; init; } = string.Empty;
+        public string Entity { get; init; } = string.Empty;
+        public string Property { get; init; } = string.Empty;
+        public string? QueryRef { get; init; }
+        public string? NativeQueryRef { get; init; }
+        public string? FieldJson { get; init; }
+        public bool IsMeasure { get; init; }
+    }
+
+    private sealed class MemberField
+    {
+        public string Entity { get; init; } = string.Empty;
+        public string Property { get; init; } = string.Empty;
+        public string FieldJson { get; init; } = string.Empty;
+        public bool IsNumeric { get; init; }
+        public string NumericSuffix { get; init; } = string.Empty;
+    }
+
+    private sealed class MeasureField
+    {
+        public string QueryRef { get; init; } = string.Empty;
+        public string Property { get; init; } = string.Empty;
+        public string NativeName { get; init; } = string.Empty;
     }
 }

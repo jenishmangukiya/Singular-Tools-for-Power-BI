@@ -75,7 +75,7 @@ public class PageItemViewModel : INotifyPropertyChanged
 public sealed partial class ReportPagesManagerPage : Page, IToolPage
 {
     public string ToolId => "report-pages-manager";
-    public string Title => "Report Pages Manager";
+    public string Title => "Page Manager";
     public string Description => "Search, reorder, rename and organize report pages";
     public string Glyph => "\uE8A9";
 

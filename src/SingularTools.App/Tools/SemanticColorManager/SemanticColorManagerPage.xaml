@@ -16,7 +16,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!--  Row 0 · Header + history + scan  -->
+        <!--  Row 0 · Header + history  -->
         <Grid Grid.Row="0" Margin="0,0,0,10" ColumnSpacing="{StaticResource SpaceM}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -27,7 +27,7 @@
                 <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Semantic colors" />
                 <TextBlock
                     Style="{StaticResource MutedCaptionTextStyle}"
-                    Text="Values already used as data-point colors across the report. Give each one a color to keep it consistent everywhere."
+                    Text="Add a value and a color, then apply it to every chart in the report — existing colors or not."
                     TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
@@ -35,18 +35,6 @@
                 Grid.Column="1"
                 Orientation="Horizontal"
                 Spacing="{StaticResource SpaceS}">
-                <Button
-                    x:Name="ScanButton"
-                    Height="32"
-                    Padding="10,0"
-                    Click="Scan_Click"
-                    CornerRadius="{StaticResource RadiusMedium}"
-                    ToolTipService.ToolTip="Re-scan the report definition files">
-                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
-                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                        <TextBlock Text="Scan" />
-                    </StackPanel>
-                </Button>
                 <Button
                     x:Name="UndoButton"
                     Width="40"
@@ -94,7 +82,7 @@
                     Padding="10,0"
                     Click="AddValue_Click"
                     CornerRadius="{StaticResource RadiusMedium}"
-                    ToolTipService.ToolTip="Add a value to predefine its color">
+                    ToolTipService.ToolTip="Add a value and choose its color">
                     <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
                         <FontIcon FontSize="14" Glyph="&#xE710;" />
                         <TextBlock Text="Add value" />
@@ -128,7 +116,7 @@
                         <TextBlock
                             Grid.Column="1"
                             Style="{StaticResource MutedCaptionTextStyle}"
-                            Text="Click a swatch to choose a color" />
+                            Text="Click a swatch to change its color" />
                     </Grid>
 
                     <ListView
@@ -144,7 +132,7 @@
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="local:SemanticColorItem">
+                            <DataTemplate x:DataType="local:SemanticColorRuleItem">
                                 <Grid
                                     Margin="0,2"
                                     Padding="8,6"
@@ -152,6 +140,7 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
@@ -173,53 +162,28 @@
                                             CornerRadius="{StaticResource RadiusSmall}" />
                                     </Button>
 
-                                    <StackPanel
+                                    <TextBlock
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
-                                        Spacing="2">
-                                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
-                                            <Border
-                                                Padding="6,1"
-                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                                CornerRadius="{StaticResource RadiusSmall}">
-                                                <TextBlock
-                                                    Style="{StaticResource BadgeTextStyle}"
-                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                    Text="{x:Bind KindLabel}" />
-                                            </Border>
-                                            <Border
-                                                Padding="6,1"
-                                                Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
-                                                CornerRadius="{StaticResource RadiusSmall}"
-                                                Visibility="{x:Bind NewBadgeVisibility}">
-                                                <TextBlock
-                                                    Style="{StaticResource BadgeTextStyle}"
-                                                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                                                    Text="New" />
-                                            </Border>
-                                            <TextBlock Style="{StaticResource RowTitleTextStyle}" Text="{x:Bind DisplayValue}" />
-                                        </StackPanel>
-                                        <TextBlock Style="{StaticResource RowSubtitleTextStyle}" Text="{x:Bind DetailText}" />
-                                        <TextBlock
-                                            Style="{StaticResource RowSubtitleTextStyle}"
-                                            Text="{x:Bind FieldsText}"
-                                            Visibility="{x:Bind FieldsVisibility}" />
-                                    </StackPanel>
+                                        Style="{StaticResource RowTitleTextStyle}"
+                                        Text="{x:Bind Value}" />
 
-                                    <StackPanel
+                                    <TextBlock
                                         Grid.Column="2"
                                         VerticalAlignment="Center"
-                                        HorizontalAlignment="Right"
-                                        Spacing="2">
-                                        <TextBlock
-                                            HorizontalAlignment="Right"
-                                            Style="{StaticResource RowTitleTextStyle}"
-                                            Text="{x:Bind Hex, Mode=OneWay}" />
-                                        <TextBlock
-                                            HorizontalAlignment="Right"
-                                            Style="{StaticResource RowSubtitleTextStyle}"
-                                            Text="{x:Bind CurrentColorText}" />
-                                    </StackPanel>
+                                        Style="{StaticResource RowSubtitleTextStyle}"
+                                        Text="{x:Bind Hex, Mode=OneWay}" />
+
+                                    <Button
+                                        Grid.Column="3"
+                                        Width="40"
+                                        Height="40"
+                                        AutomationProperties.Name="Remove value"
+                                        Click="DeleteRule_Click"
+                                        Style="{StaticResource ToolbarButtonStyle}"
+                                        ToolTipService.ToolTip="Remove this value">
+                                        <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                                    </Button>
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -262,7 +226,7 @@
                 </Button>
             </StackPanel>
 
-            <!--  Empty: report loaded but no color selectors  -->
+            <!--  Empty: report loaded but no values added  -->
             <StackPanel
                 x:Name="NoValuesPanel"
                 MaxWidth="440"
@@ -278,18 +242,21 @@
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource ToolTitleTextStyle}"
-                    Text="No data-point colors found" />
+                    Text="No values yet" />
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource MutedCaptionTextStyle}"
-                    Text="Report definition files only store values that already have a color. Color a category value once in Power BI (Format visual → Data colors), save, then press Scan."
+                    Text="Add a value such as &quot;Enterprise&quot; or &quot;Yes&quot; and pick a color. Applying it colors every matching chart, even values that had no color before."
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
                 <Button
                     HorizontalAlignment="Center"
-                    Click="Scan_Click"
-                    Style="{StaticResource ToolbarButtonStyle}">
-                    <TextBlock Text="Scan again" />
+                    Click="AddValue_Click"
+                    Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                        <TextBlock Text="Add value" />
+                    </StackPanel>
                 </Button>
             </StackPanel>
         </Grid>
@@ -312,7 +279,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Style="{StaticResource MutedCaptionTextStyle}"
-                Text="Changes save automatically" />
+                Text="Values are saved per report; apply writes to the report" />
         </Grid>
     </Grid>
 </Page>

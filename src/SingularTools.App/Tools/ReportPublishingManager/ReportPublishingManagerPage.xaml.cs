@@ -63,7 +63,7 @@ public sealed class WorkspaceItemViewModel : INotifyPropertyChanged
 public sealed partial class ReportPublishingManagerPage : Page, IToolPage
 {
     public string ToolId => "report-publishing-manager";
-    public string Title => "Report Publishing Manager";
+    public string Title => "Multi-Workspace Publish";
     public string Description => "Publish a report to multiple Power BI workspaces at once";
     public string Glyph => "\uE724";
 

@@ -14,15 +14,9 @@ using Windows.UI;
 
 namespace SingularTools_App.Tools.SemanticColorManager;
 
-public sealed class SemanticColorItem : INotifyPropertyChanged
+public sealed class SemanticColorRuleItem : INotifyPropertyChanged
 {
-    public string Key { get; init; } = string.Empty;
-    public string DisplayValue { get; init; } = string.Empty;
-    public string DetailText { get; init; } = string.Empty;
-    public string FieldsText { get; init; } = string.Empty;
-    public string CurrentColorText { get; init; } = string.Empty;
-    public string KindLabel { get; init; } = "Value";
-    public bool IsManual { get; init; }
+    public string Value { get; init; } = string.Empty;
 
     private string _hex = "#118DFF";
     public string Hex
@@ -47,12 +41,6 @@ public sealed class SemanticColorItem : INotifyPropertyChanged
         }
     }
 
-    public Visibility FieldsVisibility =>
-        string.IsNullOrWhiteSpace(FieldsText) ? Visibility.Collapsed : Visibility.Visible;
-
-    public Visibility NewBadgeVisibility =>
-        IsManual ? Visibility.Visible : Visibility.Collapsed;
-
     public void SetColor(Color color)
     {
         Hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
@@ -67,14 +55,13 @@ public sealed class SemanticColorItem : INotifyPropertyChanged
 public sealed partial class SemanticColorManagerPage : Page, IToolPage
 {
     public string ToolId => "semantic-color-manager";
-    public string Title => "Semantic Color Manager";
-    public string Description => "Keep matching legend values (e.g. Yes / No, 2013) the same color across every visual";
+    public string Title => "Color Sync";
+    public string Description => "Color matching values (e.g. Yes / No) the same across every visual";
     public string Glyph => "\uE790";
 
     private ReportManager Report => App.Workspace.Manager;
-    private readonly ObservableCollection<SemanticColorItem> _items = new();
-    private readonly List<SemanticColorItem> _manuallyAdded = new();
-    private SemanticColorScan? _scan;
+    private readonly ObservableCollection<SemanticColorRuleItem> _items = new();
+    private string _loadedReportPath = string.Empty;
     private bool _subscribed;
 
     public SemanticColorManagerPage()
@@ -86,10 +73,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         Unloaded += OnUnloaded;
     }
 
-    public void OnActivated()
-    {
-        RefreshScan();
-    }
+    public void OnActivated() => ReloadForReport();
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -99,7 +83,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             App.Workspace.Changed -= Workspace_Changed;
             App.Workspace.Changed += Workspace_Changed;
             _subscribed = true;
-            RefreshScan();
+            ReloadForReport();
         }
         catch (Exception ex)
         {
@@ -116,106 +100,63 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         }
     }
 
-    private void Workspace_Changed(object? sender, EventArgs e)
-    {
-        RefreshScan();
-    }
+    private void Workspace_Changed(object? sender, EventArgs e) => ReloadForReport();
 
-    private void RefreshScan()
+    private void ReloadForReport()
     {
-        _items.Clear();
-
         var hasReport = App.Workspace.HasReport;
+        var reportPath = hasReport ? App.Workspace.ReportPath : string.Empty;
+
         ReportPathText.Text = hasReport ? App.Workspace.ReportName : "No report loaded";
 
-        if (!hasReport)
+        // Rules are user input keyed by report; only reload when the report changed.
+        if (!string.Equals(reportPath, _loadedReportPath, StringComparison.OrdinalIgnoreCase))
         {
-            _scan = null;
-            SummaryText.Text = string.Empty;
-            UpdateEmptyStates(hasReport);
-            UpdateHistoryButtons();
-            return;
+            _loadedReportPath = reportPath;
+            LoadRules();
         }
 
-        try
-        {
-            _scan = new SemanticColorService().Scan(Report);
-        }
-        catch (Exception ex)
-        {
-            App.Log($"Semantic color scan failed: {ex}");
-            ToastService.Show($"Could not scan report: {ex.Message}", ToastSeverity.Error);
-            UpdateEmptyStates(hasReport);
-            UpdateHistoryButtons();
-            return;
-        }
-
-        var palette = SemanticColorService.DefaultPalette;
-        var index = 0;
-
-        foreach (var value in _scan.Values)
-        {
-            var seed = value.CommonColor ?? palette[index % palette.Length];
-            index++;
-
-            var item = new SemanticColorItem
-            {
-                Key = value.Key,
-                DisplayValue = string.IsNullOrEmpty(value.DisplayValue) ? "(blank)" : value.DisplayValue,
-                KindLabel = value.KindLabel,
-                DetailText = BuildDetailText(value),
-                FieldsText = BuildFieldsText(value),
-                CurrentColorText = BuildCurrentColorText(value)
-            };
-            item.SetColor(ParseHex(seed));
-            _items.Add(item);
-        }
-
-        // Keep values the user added by hand until they are written to the report.
-        foreach (var manual in _manuallyAdded)
-        {
-            _items.Add(manual);
-        }
-
-        SummaryText.Text = _items.Count == 0
-            ? string.Empty
-            : $"{Plural(_scan.Values.Count, "value")} · {Plural(_scan.VisualCount, "visual")} scanned";
-
-        UpdateEmptyStates(hasReport);
+        UpdateEmptyStates();
         UpdateHistoryButtons();
     }
 
-    private static string BuildDetailText(SemanticColorValue value)
+    private void LoadRules()
     {
-        var parts = new List<string> { Plural(value.VisualCount, "visual") };
-        if (value.SelectorCount > value.VisualCount)
+        _items.Clear();
+
+        if (!App.Workspace.HasReport) return;
+
+        var palette = SemanticColorService.DefaultPalette;
+        var stored = SemanticColorRuleStore.Load(App.Workspace.ReportPath);
+        var index = 0;
+
+        foreach (var rule in stored)
         {
-            parts.Add(Plural(value.SelectorCount, "selector"));
+            if (string.IsNullOrWhiteSpace(rule.Value)) continue;
+
+            var item = new SemanticColorRuleItem { Value = rule.Value };
+            var hex = string.IsNullOrWhiteSpace(rule.Hex)
+                ? palette[index % palette.Length]
+                : rule.Hex;
+            index++;
+
+            item.SetColor(ParseHex(hex));
+            _items.Add(item);
         }
-        return string.Join(" · ", parts);
     }
 
-    private static string BuildFieldsText(SemanticColorValue value)
+    private void SaveRules()
     {
-        if (value.Kind == SemanticColorTargetKind.SeriesIdentity)
-        {
-            return string.IsNullOrEmpty(value.RawValue) ? string.Empty : $"queryRef: {value.RawValue}";
-        }
+        if (!App.Workspace.HasReport) return;
 
-        var fields = value.Fields.Count > 0 ? string.Join(", ", value.Fields) : value.FieldName;
-        return string.IsNullOrEmpty(fields) ? string.Empty : $"Fields: {fields}";
+        SemanticColorRuleStore.Save(App.Workspace.ReportPath, _items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Value))
+            .Select(i => new SemanticColorRule { Value = i.Value, Hex = i.Hex }));
     }
 
-    private static string BuildCurrentColorText(SemanticColorValue value)
+    private void UpdateEmptyStates()
     {
-        if (value.CommonColor != null) return $"Current {value.CommonColor}";
-        if (value.HasConflict) return $"Current: mixed ({value.CurrentColors.Count})";
-        if (value.HasThemeColor) return "Current: theme color";
-        return "Current: not set";
-    }
-
-    private void UpdateEmptyStates(bool hasReport)
-    {
+        var hasReport = App.Workspace.HasReport;
         var hasItems = _items.Count > 0;
 
         ListCard.Visibility = hasReport && hasItems ? Visibility.Visible : Visibility.Collapsed;
@@ -224,6 +165,10 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
 
         if (ApplyButton != null) ApplyButton.IsEnabled = hasReport && hasItems;
         if (AddValueButton != null) AddValueButton.IsEnabled = hasReport;
+
+        SummaryText.Text = hasItems
+            ? $"{Plural(_items.Count, "value")} · not applied automatically"
+            : string.Empty;
     }
 
     private void UpdateHistoryButtons()
@@ -231,12 +176,6 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         var history = App.Workspace.History;
         if (UndoButton != null) UndoButton.IsEnabled = history?.CanUndo == true;
         if (RedoButton != null) RedoButton.IsEnabled = history?.CanRedo == true;
-    }
-
-    private void Scan_Click(object sender, RoutedEventArgs e)
-    {
-        RefreshScan();
-        ToastService.Show("Scanned the report for legend and series colors.", ToastSeverity.Informational);
     }
 
     private void Apply_Click(object sender, RoutedEventArgs e)
@@ -247,38 +186,35 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             return;
         }
 
-        var map = _items
-            .Where(i => !string.IsNullOrWhiteSpace(i.Hex) && !string.IsNullOrWhiteSpace(i.Key))
-            .GroupBy(i => i.Key)
-            .ToDictionary(g => g.Key, g => g.First().Hex);
+        var rules = _items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Value) && !string.IsNullOrWhiteSpace(i.Hex))
+            .Select(i => new SemanticColorRule { Value = i.Value, Hex = i.Hex })
+            .ToList();
 
-        if (map.Count == 0)
+        if (rules.Count == 0)
         {
-            ToastService.Show("No colors to apply.", ToastSeverity.Informational);
+            ToastService.Show("Add at least one value with a color first.", ToastSeverity.Informational);
             return;
         }
-
-        // The report is about to become the source of truth for these values.
-        _manuallyAdded.Clear();
 
         try
         {
             var result = App.Workspace.ApplyEditWithResult(
-                m => new SemanticColorService().Apply(m, map),
+                m => new SemanticColorService().ApplyRules(m, rules),
                 managerWritesInternally: true);
 
             if (result.FilesWritten == 0)
             {
-                ToastService.Show("Every matching color already matches — nothing to change.", ToastSeverity.Informational);
+                ToastService.Show("Every matching value already has this color — nothing to change.", ToastSeverity.Informational);
             }
             else
             {
+                var parts = new List<string> { Plural(result.SelectorsChanged, "color") };
+                if (result.SelectorsCreated > 0) parts.Add($"{result.SelectorsCreated} added");
                 ToastService.Show(
-                    $"Updated {Plural(result.SelectorsChanged, "selector")} across {Plural(result.VisualsChanged, "visual")}.",
+                    $"Updated {string.Join(" and ", parts)} across {Plural(result.VisualsChanged, "visual")}.",
                     ToastSeverity.Success);
             }
-
-            RefreshScan();
         }
         catch (Exception ex)
         {
@@ -289,7 +225,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
 
     private async void Swatch_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement element || element.DataContext is not SemanticColorItem item)
+        if (sender is not FrameworkElement element || element.DataContext is not SemanticColorRuleItem item)
         {
             return;
         }
@@ -298,7 +234,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = $"Color for \u201C{item.DisplayValue}\u201D",
+            Title = $"Color for \u201C{item.Value}\u201D",
             Content = picker,
             PrimaryButtonText = "Apply",
             CloseButtonText = "Cancel",
@@ -310,6 +246,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             {
                 item.SetColor(picker.Color);
+                SaveRules();
             }
         }
         catch (Exception ex)
@@ -328,8 +265,8 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
 
         var valueBox = new TextBox
         {
-            Header = "Value",
-            PlaceholderText = "e.g. Sometimes or 2015",
+            Header = "Value(s)",
+            PlaceholderText = "e.g. Channel Partner, Enterprise (comma-separated)",
             MinWidth = 320
         };
 
@@ -341,7 +278,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             FontSize = 12,
             Opacity = 0.75,
             TextWrapping = TextWrapping.Wrap,
-            Text = "The color applies to every bar, column and slice already using this value."
+            Text = "Matched as text against every non-table chart, whether or not that value already has a color."
         };
 
         var panel = new StackPanel { Spacing = 10 };
@@ -352,7 +289,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Add legend value",
+            Title = "Add value",
             Content = panel,
             PrimaryButtonText = "Add",
             CloseButtonText = "Cancel",
@@ -372,52 +309,56 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
             return;
         }
 
-        var raw = (valueBox.Text ?? string.Empty).Trim();
-        if (raw.Length == 0)
+        var parts = (valueBox.Text ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        if (parts.Count == 0)
         {
-            ToastService.Show("Type a value to add.", ToastSeverity.Warning);
+            ToastService.Show("Type at least one value to add.", ToastSeverity.Warning);
             return;
         }
 
-        var key = KeyForTypedValue(raw);
-        if (_items.Any(i => string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase)))
+        var added = 0;
+        foreach (var part in parts)
         {
-            ToastService.Show($"\u201C{raw}\u201D is already in the list.", ToastSeverity.Informational);
-            return;
+            var value = SemanticColorService.NormalizeRuleValue(part);
+            if (value.Length == 0) continue;
+
+            var existing = _items.FirstOrDefault(i =>
+                string.Equals(i.Value, value, StringComparison.OrdinalIgnoreCase));
+
+            if (existing != null)
+            {
+                existing.SetColor(picker.Color);
+            }
+            else
+            {
+                var item = new SemanticColorRuleItem { Value = value };
+                item.SetColor(picker.Color);
+                _items.Add(item);
+            }
+
+            added++;
         }
 
-        var item = new SemanticColorItem
-        {
-            Key = key,
-            DisplayValue = raw,
-            KindLabel = "Value",
-            IsManual = true,
-            DetailText = "Added",
-            FieldsText = string.Empty,
-            CurrentColorText = "Will be applied"
-        };
-        item.SetColor(picker.Color);
+        if (added == 0) return;
 
-        _manuallyAdded.Add(item);
-        _items.Add(item);
-        UpdateEmptyStates(true);
-
+        SaveRules();
+        UpdateEmptyStates();
         ToastService.Show("Added to the list. Click Apply to report to write it.", ToastSeverity.Informational);
     }
 
-    /// <summary>
-    /// Maps a typed value to the same normalized key the scan uses: numeric input
-    /// (e.g. "2015") matches numeric literals like <c>2015L</c>, otherwise text.
-    /// </summary>
-    private static string KeyForTypedValue(string value)
+    private void DeleteRule_Click(object sender, RoutedEventArgs e)
     {
-        var trimmed = value.Trim();
-        if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+        if (sender is not FrameworkElement element || element.DataContext is not SemanticColorRuleItem item)
         {
-            return "v:" + trimmed.ToLowerInvariant();
+            return;
         }
 
-        return "s:" + trimmed.ToLowerInvariant();
+        _items.Remove(item);
+        SaveRules();
+        UpdateEmptyStates();
     }
 
     private static ColorPicker BuildPicker(string hex)
@@ -457,8 +398,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         try
         {
             App.Workspace.ApplyEdit(m => m.RestoreFromSnapshot(snapshot), managerWritesInternally: true, syncFirst: false);
-            _manuallyAdded.Clear();
-            RefreshScan();
+            SyncColorsFromReport();
             ToastService.Show(message, ToastSeverity.Informational);
         }
         catch (Exception ex)
@@ -467,6 +407,27 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         }
 
         UpdateHistoryButtons();
+    }
+
+    /// <summary>
+    /// Undo/redo restores the report, not the user's rule list, so pull each rule's
+    /// color back from the report to keep the swatches in sync.
+    /// </summary>
+    private void SyncColorsFromReport()
+    {
+        if (!App.Workspace.HasReport) return;
+
+        var service = new SemanticColorService();
+        foreach (var item in _items)
+        {
+            var hex = service.GetAppliedColor(Report, item.Value);
+            if (!string.IsNullOrEmpty(hex))
+            {
+                item.SetColor(ParseHex(hex));
+            }
+        }
+
+        SaveRules();
     }
 
     private void GoToHome_Click(object sender, RoutedEventArgs e)

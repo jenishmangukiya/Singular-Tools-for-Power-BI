@@ -19,19 +19,19 @@ public static class ToolRegistry
             pageType: typeof(Tools.Home.HomePage)),
         new(
             id: "report-pages-manager",
-            title: "Report Pages Manager",
+            title: "Page Manager",
             description: "Search, reorder, rename and organize report pages",
             glyph: "\uE8A9", // Page
             pageType: typeof(Tools.ReportPagesManager.ReportPagesManagerPage)),
         new(
             id: "report-publishing-manager",
-            title: "Report Publishing Manager",
+            title: "Multi-Workspace Publish",
             description: "Publish a report to multiple Power BI workspaces at once",
             glyph: "\uE724", // Send
             pageType: typeof(Tools.ReportPublishingManager.ReportPublishingManagerPage)),
         new(
             id: "semantic-color-manager",
-            title: "Semantic Color Manager",
+            title: "Color Sync",
             description: "Keep matching values (e.g. Yes / No) the same color across every visual",
             glyph: "\uE790", // Color
             pageType: typeof(Tools.SemanticColorManager.SemanticColorManagerPage))
