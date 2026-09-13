@@ -16,12 +16,13 @@
 - Publishing latest release `dotnet publish "src\SingularTools.App\SingularTools.App.csproj" -c Release -o "$env:LOCALAPPDATA\SingularPowerTools"`
 
 ## Test fixture gotcha (read before touching tests or the demo report)
-- `dotnet test` is currently **red: 8/13 fail**. `Demo PBI Report.Report/definition/pages/pages.json` has 2 pages, but `ReportManagerTests` asserts 3 (`P1`, `P2`, `Page 3`) and a `clusteredBarChart` on `P1`. Tests are coupled to the checked-in demo report; update both together.
+- `dotnet test` is currently **red** (`ReportManagerTests` failures; ~6/13 at last run). Tests assert the checked-in `Demo PBI Report.Report` (page count, display names, and a `clusteredBarChart` visual), so the demo report and those assertions must be updated together. Tests also read the report folder directly, so `ReportManager.LoadReport(folder)` tests run against whatever is checked in.
 - Mutation tests copy the demo report to a temp dir first, but read-only tests read the repo fixture directly, so editing `Demo PBI Report.Report` breaks them.
 
 ## Architecture
 - Add a tool: implement `src/SingularTools.App/Shell/IToolPage.cs` and append a descriptor in `Shell/ToolRegistry.cs`; `MainWindow` builds navigation automatically. One folder per tool under `Tools/`.
 - Report state is shared: `App.Workspace` (`Shell/ReportWorkspace.cs`) owns the single `ReportManager` + `ReportEditHistory` for the whole app. Tools must read/open reports through it (`OpenReport`, `Reload`, `Commit`) instead of constructing their own `ReportManager`; it raises `Changed` when the session updates. The Home page opens reports via `ReportPicker.PickReportFolderAsync`; RPM's empty state routes users back to Home.
+- **Mutate only via `App.Workspace.ApplyEdit(...)` / `ApplyEditWithResult(...)`** (or `ApplyEdit(..., managerWritesInternally: true)` for methods that already save) — never raw `ReportManager.SaveChanges()`. `ApplyEdit` also saves, commits history, and re-syncs. `ReportFileWatcher` auto-reloads the session when Power BI saves to disk (debounced ~600ms) and an on-disk "signature" suppresses its own writes; an external reload **resets undo history**, so `Undo`/`Redo` disable after an external change.
 - Transient feedback must go through `ToastService.Show(...)` (`Shell/ToastService.cs`), never a page-local `InfoBar`/`TeachingTip`. `MainWindow` renders toasts as a non-interactive overlay (`ToastHost`) pinned bottom-right so they never reflow or intercept the page.
 - `ReportManager` is the whole PBIR layer. A folder is a valid report when `definition/pages/pages.json` exists. Page IDs are 20-char lowercase hex; `DuplicatePage` generates random 10-byte IDs and deep-copies the page folder.
 - Writes are atomic: `SaveChanges` writes `pages.json.tmp` then `File.Move(..., overwrite: true)`. Call `SaveChanges()` after mutating `Pages`, and `Reload()` to re-read from disk.

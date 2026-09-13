@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         ToastService.Requested += OnToastRequested;
+        App.Workspace.ExternalChangeDetected += OnExternalChangeDetected;
 
         _ = BrandAssets.ApplyAsync(AppTitleBarLogo);
 
@@ -233,6 +234,11 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+    }
+
+    private void OnExternalChangeDetected(object? sender, EventArgs e)
+    {
+        ToastService.Show("Report updated in Power BI Desktop — refreshed.", ToastSeverity.Informational);
     }
 
     private void OnToastRequested(ToastRequest request)

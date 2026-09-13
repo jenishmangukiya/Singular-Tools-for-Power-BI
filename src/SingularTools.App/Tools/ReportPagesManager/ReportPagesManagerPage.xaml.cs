@@ -82,6 +82,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     private ReportManager _reportManager => App.Workspace.Manager;
     private readonly ObservableCollection<PageItemViewModel> _items = new();
     private bool _suppressNavigation;
+    private bool _pendingRefresh;
 
     public ReportPagesManagerPage()
     {
@@ -89,6 +90,26 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         PagesListView.ItemsSource = _items;
 
         Loaded += ReportPagesManagerPage_Loaded;
+        Unloaded += ReportPagesManagerPage_Unloaded;
+    }
+
+    private void ReportPagesManagerPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        App.Workspace.Changed -= Workspace_Changed;
+    }
+
+    private void Workspace_Changed(object? sender, EventArgs e)
+    {
+        // Don't tear down an open inline editor; refresh once it commits.
+        if (_items.Any(i => i.IsEditing))
+        {
+            _pendingRefresh = true;
+            return;
+        }
+
+        RefreshList();
+        UpdateReportStatus();
+        UpdateHistoryButtons();
     }
 
     public void OnActivated()
@@ -112,6 +133,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         try
         {
             App.Log("ReportPagesManagerPage loaded.");
+            App.Workspace.Changed -= Workspace_Changed;
+            App.Workspace.Changed += Workspace_Changed;
             UpdateReportStatus();
             RefreshList();
             FocusSearchBox();
@@ -181,9 +204,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void ExecuteSort(SortMode mode, string message)
     {
-        _reportManager.SortPages(mode);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.SortPages(mode));
         RefreshList();
         ShowStatus(InfoBarSeverity.Success, message);
     }
@@ -194,12 +215,6 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         RefreshList();
         UpdateHistoryButtons();
         ShowStatus(InfoBarSeverity.Informational, "Reloaded pages from the report definition.");
-    }
-
-    private void RecordHistory()
-    {
-        App.Workspace.Commit();
-        UpdateHistoryButtons();
     }
 
     private void UpdateHistoryButtons()
@@ -233,7 +248,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
         try
         {
-            _reportManager.RestoreFromSnapshot(snapshot);
+            App.Workspace.ApplyEdit(m => m.RestoreFromSnapshot(snapshot), managerWritesInternally: true, syncFirst: false);
             RefreshList();
             ShowStatus(InfoBarSeverity.Informational, message);
         }
@@ -426,9 +441,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         var orderedIds = _items.Select(i => i.Id).ToList();
         if (orderedIds.Count > 0)
         {
-            _reportManager.ReorderPages(orderedIds);
-            _reportManager.SaveChanges();
-            RecordHistory();
+            App.Workspace.ApplyEdit(m => m.ReorderPages(orderedIds));
             RefreshList();
             ShowStatus(InfoBarSeverity.Success, "Page order updated via drag-and-drop.");
         }
@@ -448,10 +461,9 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void DuplicatePage(string id)
     {
-        var newPage = _reportManager.DuplicatePage(id);
+        var newPage = App.Workspace.ApplyEditWithResult(m => m.DuplicatePage(id), managerWritesInternally: true);
         if (newPage != null)
         {
-            RecordHistory();
             RefreshList();
             ShowStatus(InfoBarSeverity.Success, $"Duplicated page as '{newPage.DisplayName}'.");
 
@@ -478,9 +490,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         var confirmed = await ConfirmDeleteAsync(pageName);
         if (!confirmed) return;
 
-        if (_reportManager.DeletePage(id))
+        if (App.Workspace.ApplyEditWithResult(m => m.DeletePage(id), managerWritesInternally: true))
         {
-            RecordHistory();
             RefreshList();
             ShowStatus(InfoBarSeverity.Success, $"Deleted page '{pageName}'.");
         }
@@ -528,9 +539,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     {
         if (page == null) return;
 
-        _reportManager.SetActivePage(page.Id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.SetActivePage(page.Id));
         RefreshList();
         ReselectId(page.Id);
         ShowStatus(InfoBarSeverity.Success, $"Active page set to '{page.DisplayName}'.");
@@ -568,9 +577,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         var item = GetContextItem(sender);
         if (item == null) return;
 
-        _reportManager.SetActivePage(item.Id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.SetActivePage(item.Id));
         RefreshList();
         ShowStatus(InfoBarSeverity.Success, $"Active page set to '{item.DisplayName}'.");
     }
@@ -591,9 +598,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     {
         var item = GetContextItem(sender);
         if (item == null) return;
-        _reportManager.TogglePageVisibility(item.Id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.TogglePageVisibility(item.Id));
         RefreshList();
         ShowStatus(InfoBarSeverity.Success, "Updated page visibility.");
     }
@@ -618,9 +623,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveUp(string id)
     {
-        _reportManager.MovePageUp(id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.MovePageUp(id));
         RefreshList();
         ReselectId(id);
         ShowStatus(InfoBarSeverity.Success, "Moved page up.");
@@ -628,9 +631,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveDown(string id)
     {
-        _reportManager.MovePageDown(id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.MovePageDown(id));
         RefreshList();
         ReselectId(id);
         ShowStatus(InfoBarSeverity.Success, "Moved page down.");
@@ -638,9 +639,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveToTop(string id)
     {
-        _reportManager.MovePageToTop(id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.MovePageToTop(id));
         RefreshList();
         ReselectId(id);
         ShowStatus(InfoBarSeverity.Success, "Moved page to top.");
@@ -648,9 +647,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveToBottom(string id)
     {
-        _reportManager.MovePageToBottom(id);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.MovePageToBottom(id));
         RefreshList();
         ReselectId(id);
         ShowStatus(InfoBarSeverity.Success, "Moved page to bottom.");
@@ -776,13 +773,19 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
             return;
         }
 
-        _reportManager.RenamePage(item.Id, newName);
-        _reportManager.SaveChanges();
-        RecordHistory();
+        App.Workspace.ApplyEdit(m => m.RenamePage(item.Id, newName));
         item.DisplayName = newName;
         RefreshList();
         ReselectId(item.Id);
         ShowStatus(InfoBarSeverity.Success, $"Renamed page to '{newName}'.");
+
+        if (_pendingRefresh)
+        {
+            _pendingRefresh = false;
+            RefreshList();
+            UpdateReportStatus();
+            UpdateHistoryButtons();
+        }
     }
 
     private void SortAz_Click(object sender, RoutedEventArgs e) => ExecuteSort(SortMode.Ascending, "Sorted pages A-Z");
