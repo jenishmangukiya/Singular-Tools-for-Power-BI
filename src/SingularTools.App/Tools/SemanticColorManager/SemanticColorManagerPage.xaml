@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="SingularTools_App.Tools.SemanticColorManager.SemanticColorManagerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:SingularTools_App.Tools.SemanticColorManager"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="Transparent" Padding="{StaticResource ToolPagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Row 0 · Header + history + scan  -->
+        <Grid Grid.Row="0" Margin="0,0,0,10" ColumnSpacing="{StaticResource SpaceM}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Semantic colors" />
+                <TextBlock
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Text="Values already used as data-point colors across the report. Give each one a color to keep it consistent everywhere."
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Column="1"
+                Orientation="Horizontal"
+                Spacing="{StaticResource SpaceS}">
+                <Button
+                    x:Name="ScanButton"
+                    Height="32"
+                    Padding="10,0"
+                    Click="Scan_Click"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    ToolTipService.ToolTip="Re-scan the report definition files">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                        <TextBlock Text="Scan" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="UndoButton"
+                    Width="40"
+                    Height="40"
+                    AutomationProperties.Name="Undo"
+                    Click="Undo_Click"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Undo (Ctrl+Z)">
+                    <FontIcon FontSize="15" Glyph="&#xE7A7;" />
+                </Button>
+                <Button
+                    x:Name="RedoButton"
+                    Width="40"
+                    Height="40"
+                    AutomationProperties.Name="Redo"
+                    Click="Redo_Click"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Redo (Ctrl+Y)">
+                    <FontIcon FontSize="15" Glyph="&#xE7A6;" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!--  Row 1 · Apply strip  -->
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                <Button
+                    x:Name="ApplyButton"
+                    Click="Apply_Click"
+                    Style="{StaticResource AccentButtonStyle}"
+                    ToolTipService.ToolTip="Write the chosen colors to the report's visual definition files">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE73E;" />
+                        <TextBlock Text="Apply to report" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="AddValueButton"
+                    Height="32"
+                    Padding="10,0"
+                    Click="AddValue_Click"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    ToolTipService.ToolTip="Add a legend value that has no color yet">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                        <TextBlock Text="Add value" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <TextBlock
+                x:Name="SummaryText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="" />
+        </Grid>
+
+        <!--  Row 2 · Content  -->
+        <Grid Grid.Row="2">
+            <Border x:Name="ListCard" Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="14,10,14,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Values" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="Click a swatch to choose a color" />
+                    </Grid>
+
+                    <ListView
+                        x:Name="ValuesListView"
+                        Grid.Row="1"
+                        Padding="6,2,6,6"
+                        SelectionMode="None">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:SemanticColorItem">
+                                <Grid
+                                    Margin="0,2"
+                                    Padding="8,6"
+                                    ColumnSpacing="{StaticResource SpaceM}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button
+                                        Grid.Column="0"
+                                        Width="40"
+                                        Height="40"
+                                        Padding="0"
+                                        AutomationProperties.Name="Choose color"
+                                        Click="Swatch_Click"
+                                        CornerRadius="{StaticResource RadiusMedium}"
+                                        ToolTipService.ToolTip="Choose color">
+                                        <Border
+                                            Width="24"
+                                            Height="24"
+                                            Background="{x:Bind SwatchBrush, Mode=OneWay}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource RadiusSmall}" />
+                                    </Button>
+
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                            <Border
+                                                Padding="6,1"
+                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                CornerRadius="{StaticResource RadiusSmall}">
+                                                <TextBlock
+                                                    Style="{StaticResource BadgeTextStyle}"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind KindLabel}" />
+                                            </Border>
+                                            <Border
+                                                Padding="6,1"
+                                                Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                                CornerRadius="{StaticResource RadiusSmall}"
+                                                Visibility="{x:Bind NewBadgeVisibility}">
+                                                <TextBlock
+                                                    Style="{StaticResource BadgeTextStyle}"
+                                                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                    Text="New" />
+                                            </Border>
+                                            <TextBlock Style="{StaticResource RowTitleTextStyle}" Text="{x:Bind DisplayValue}" />
+                                        </StackPanel>
+                                        <TextBlock Style="{StaticResource RowSubtitleTextStyle}" Text="{x:Bind DetailText}" />
+                                        <TextBlock
+                                            Style="{StaticResource RowSubtitleTextStyle}"
+                                            Text="{x:Bind FieldsText}"
+                                            Visibility="{x:Bind FieldsVisibility}" />
+                                    </StackPanel>
+
+                                    <StackPanel
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Right"
+                                        Spacing="2">
+                                        <TextBlock
+                                            HorizontalAlignment="Right"
+                                            Style="{StaticResource RowTitleTextStyle}"
+                                            Text="{x:Bind Hex, Mode=OneWay}" />
+                                        <TextBlock
+                                            HorizontalAlignment="Right"
+                                            Style="{StaticResource RowSubtitleTextStyle}"
+                                            Text="{x:Bind CurrentColorText}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <!--  Empty: no report loaded  -->
+            <StackPanel
+                x:Name="NoReportPanel"
+                MaxWidth="420"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{StaticResource SpaceM}"
+                Visibility="Collapsed">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontSize="40"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xE790;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource ToolTitleTextStyle}"
+                    Text="No report loaded" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Text="Open a Power BI project (.pbip) folder from the Home page to manage its visual colors."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    HorizontalAlignment="Center"
+                    Margin="0,4,0,0"
+                    Click="GoToHome_Click"
+                    Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE80F;" />
+                        <TextBlock Text="Go to Home" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!--  Empty: report loaded but no color selectors  -->
+            <StackPanel
+                x:Name="NoValuesPanel"
+                MaxWidth="440"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{StaticResource SpaceS}"
+                Visibility="Collapsed">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontSize="32"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xE721;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource ToolTitleTextStyle}"
+                    Text="No data-point colors found" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Text="Report definition files only store values that already have a color. Color a category value once in Power BI (Format visual → Data colors), save, then press Scan."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    HorizontalAlignment="Center"
+                    Click="Scan_Click"
+                    Style="{StaticResource ToolbarButtonStyle}">
+                    <TextBlock Text="Scan again" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!--  Row 3 · Footer  -->
+        <Grid Grid.Row="3" Margin="4,10,4,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="ReportPathText"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="No report loaded"
+                TextTrimming="CharacterEllipsis" />
+
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="Changes save automatically" />
+        </Grid>
+    </Grid>
+</Page>

@@ -28,6 +28,12 @@ public static class ToolRegistry
             title: "Report Publishing Manager",
             description: "Publish a report to multiple Power BI workspaces at once",
             glyph: "\uE724", // Send
-            pageType: typeof(Tools.ReportPublishingManager.ReportPublishingManagerPage))
+            pageType: typeof(Tools.ReportPublishingManager.ReportPublishingManagerPage)),
+        new(
+            id: "semantic-color-manager",
+            title: "Semantic Color Manager",
+            description: "Keep matching values (e.g. Yes / No) the same color across every visual",
+            glyph: "\uE790", // Color
+            pageType: typeof(Tools.SemanticColorManager.SemanticColorManagerPage))
     };
 }

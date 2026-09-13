@@ -33,23 +33,5 @@
       }
     },
     "drillFilterOtherVisuals": true
-  },
-  "filterConfig": {
-    "filters": [
-      {
-        "name": "2d8a128a4d905c0bb1b5",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Discount Band"
-          }
-        },
-        "type": "Categorical"
-      }
-    ]
   }
 }
