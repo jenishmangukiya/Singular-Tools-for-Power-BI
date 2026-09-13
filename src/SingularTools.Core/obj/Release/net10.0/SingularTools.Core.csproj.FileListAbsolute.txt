@@ -9,3 +9,4 @@ E:\Test_Projects\Singular Tools for Power BI\src\SingularTools.Core\obj\Release\
 E:\Test_Projects\Singular Tools for Power BI\src\SingularTools.Core\obj\Release\net10.0\refint\SingularTools.Core.dll
 E:\Test_Projects\Singular Tools for Power BI\src\SingularTools.Core\obj\Release\net10.0\SingularTools.Core.pdb
 E:\Test_Projects\Singular Tools for Power BI\src\SingularTools.Core\obj\Release\net10.0\ref\SingularTools.Core.dll
+E:\Test_Projects\Singular Tools for Power BI\src\SingularTools.Core\obj\Release\net10.0\SingularTools.Core.sourcelink.json

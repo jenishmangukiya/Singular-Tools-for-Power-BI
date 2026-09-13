@@ -86,12 +86,6 @@ public static class PowerBiDetector
         return false;
     }
 
-    public static bool IsPowerBiForeground(out IntPtr pbiHwnd, out WindowRect rect)
-    {
-        pbiHwnd = GetForegroundWindow();
-        return IsPowerBiWindow(pbiHwnd, out _, out rect);
-    }
-
     public static bool FindActivePowerBiWindow(out IntPtr pbiHwnd, out string reportTitle, out WindowRect rect)
     {
         IntPtr foundHwnd = IntPtr.Zero;

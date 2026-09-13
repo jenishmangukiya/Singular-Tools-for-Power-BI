@@ -1,16 +1,18 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using SingularTools.Core;
+using SingularTools_App.Shell;
 using Windows.Graphics;
 
 namespace SingularTools_App;
 
 public sealed partial class MainWindow : Window
 {
-    private HotkeyManager? _hotkeyManager;
     private IntPtr _hwnd = IntPtr.Zero;
 
     [DllImport("user32.dll")]
@@ -29,6 +31,8 @@ public sealed partial class MainWindow : Window
         App.Log("MainWindow initializing...");
         InitializeComponent();
 
+        _ = BrandAssets.ApplyAsync(AppTitleBarLogo);
+
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
         try
@@ -41,21 +45,85 @@ public sealed partial class MainWindow : Window
             App.Log($"TitleBar warning: {ex.Message}");
         }
 
-        // Configure AppWindow geometry and behavior
         ConfigureAppWindow();
 
-        // Apply the application icon to the window / taskbar
+        try
+        {
+            NativeWindowSizing.Apply(_hwnd, 760, 520);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Min-size subclass warning: {ex.Message}");
+        }
+
         ApplyAppIcon();
 
-        // Navigate the root frame to MainPage
-        RootFrame.Navigate(typeof(MainPage));
-
-        // Initialize and start the Power BI scoped Hotkey Manager
-        InitializeHotkey();
+        BuildToolNavigation();
 
         Activated += MainWindow_Activated;
         Closed += MainWindow_Closed;
         App.Log("MainWindow initialized.");
+    }
+
+    private IToolPage? ActiveTool => ToolFrame.Content as IToolPage;
+
+    /// <summary>Selects and navigates to a tool by its id (used by the Home launcher).</summary>
+    public void NavigateToTool(string toolId)
+    {
+        foreach (var item in ToolNav.MenuItems.OfType<NavigationViewItem>())
+        {
+            if (item.Tag is string id && string.Equals(id, toolId, StringComparison.OrdinalIgnoreCase))
+            {
+                ToolNav.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
+    private void BuildToolNavigation()
+    {
+        ToolNav.MenuItems.Clear();
+
+        foreach (var tool in ToolRegistry.Tools)
+        {
+            var item = new NavigationViewItem
+            {
+                Content = tool.Title,
+                Tag = tool.Id,
+                Icon = new FontIcon { Glyph = tool.Glyph }
+            };
+            ToolTipService.SetToolTip(item, tool.Description);
+            ToolNav.MenuItems.Add(item);
+        }
+
+        if (ToolNav.MenuItems.FirstOrDefault() is NavigationViewItem first)
+        {
+            ToolNav.SelectedItem = first;
+        }
+    }
+
+    private void ToolNav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.SelectedItem is not NavigationViewItem item || item.Tag is not string id)
+        {
+            return;
+        }
+
+        var tool = ToolRegistry.Tools.FirstOrDefault(t => t.Id == id);
+        if (tool == null)
+        {
+            return;
+        }
+
+        if (ToolFrame.CurrentSourcePageType != tool.PageType)
+        {
+            ToolFrame.Navigate(tool.PageType);
+        }
+
+        TitleBarToolText.Text = $"\u00B7 {tool.Title}";
+        ToolTipService.SetToolTip(TitleBarToolText, tool.Description);
+
+        ActiveTool?.OnActivated();
     }
 
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -79,6 +147,10 @@ public sealed partial class MainWindow : Window
             {
                 App.Log($"Error during initial positioning: {ex}");
             }
+
+            // The taskbar button only exists once the window has been shown, so
+            // re-apply the icon here to make sure it appears in the taskbar too.
+            ApplyAppIcon();
         }
     }
 
@@ -87,12 +159,13 @@ public sealed partial class MainWindow : Window
         var appWindow = AppWindow;
         if (appWindow == null) return;
 
-        // Command Palette dimensions
-        appWindow.Resize(new SizeInt32(840, 560));
+        appWindow.Resize(new SizeInt32(900, 600));
 
         if (appWindow.Presenter is OverlappedPresenter presenter)
         {
+            presenter.IsResizable = true;
             presenter.IsMaximizable = false;
+            presenter.IsMinimizable = true;
             presenter.IsAlwaysOnTop = true;
         }
     }
@@ -105,6 +178,11 @@ public sealed partial class MainWindow : Window
             if (File.Exists(iconPath))
             {
                 AppWindow?.SetIcon(iconPath);
+                App.Log($"Window icon applied: {iconPath}");
+            }
+            else
+            {
+                App.Log($"Window icon missing at: {iconPath}");
             }
         }
         catch (Exception ex)
@@ -117,7 +195,6 @@ public sealed partial class MainWindow : Window
     {
         if (AppWindow == null) return;
 
-        // Default center
         AppWindow.Move(new PointInt32(200, 150));
         AppWindow.Show();
         this.Activate();
@@ -126,33 +203,13 @@ public sealed partial class MainWindow : Window
         SetForegroundWindow(_hwnd);
     }
 
-    private void InitializeHotkey()
-    {
-        try
-        {
-            _hotkeyManager = new HotkeyManager();
-            _hotkeyManager.PowerBiHotkeyPressed += OnPowerBiHotkeyPressed;
-            _hotkeyManager.Start();
-        }
-        catch
-        {
-        }
-    }
-
-    private void OnPowerBiHotkeyPressed(IntPtr pbiHwnd, WindowRect rect)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            ShowAndCenterOverPowerBi(rect);
-        });
-    }
-
     public void ShowAndCenterOverPowerBi(WindowRect pbiRect)
     {
         if (AppWindow == null) return;
 
-        int width = 840;
-        int height = 560;
+        var size = AppWindow.Size;
+        int width = size.Width > 0 ? size.Width : 900;
+        int height = size.Height > 0 ? size.Height : 600;
 
         int x = pbiRect.Left + (pbiRect.Width - width) / 2;
         int y = pbiRect.Top + (pbiRect.Height - height) / 3;
@@ -167,16 +224,10 @@ public sealed partial class MainWindow : Window
         ShowWindow(_hwnd, SW_RESTORE);
         SetForegroundWindow(_hwnd);
 
-        if (RootFrame.Content is MainPage page)
-        {
-            page.RefreshList();
-            page.FocusSearchBox();
-        }
+        ActiveTool?.OnActivated();
     }
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
-        _hotkeyManager?.Dispose();
-        _hotkeyManager = null;
     }
 }

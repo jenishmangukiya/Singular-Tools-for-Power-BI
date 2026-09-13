@@ -98,3 +98,4 @@ E:\Test_Projects\Singular Tools for Power BI\tests\SingularTools.Tests\obj\Debug
 E:\Test_Projects\Singular Tools for Power BI\tests\SingularTools.Tests\obj\Debug\net10.0\SingularTools.Tests.pdb
 E:\Test_Projects\Singular Tools for Power BI\tests\SingularTools.Tests\obj\Debug\net10.0\SingularTools.Tests.genruntimeconfig.cache
 E:\Test_Projects\Singular Tools for Power BI\tests\SingularTools.Tests\obj\Debug\net10.0\ref\SingularTools.Tests.dll
+E:\Test_Projects\Singular Tools for Power BI\tests\SingularTools.Tests\obj\Debug\net10.0\SingularTools.Tests.sourcelink.json

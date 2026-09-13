@@ -1,21 +1,17 @@
 # Singular Tools for Power BI ⚡
 
-**Singular Tools** is a modern, keyboard-first **Command Palette** and **Page Organizer** for Power BI Desktop authors built with **WinUI 3 (Windows App SDK)** and **.NET 10**.
-
-Think of it as **PowerToys Run / Raycast / VS Code Command Palette for Power BI**.
+**Singular Tools** is a modern **toolbox** for Power BI Desktop authors built with **WinUI 3 (Windows App SDK)** and **.NET 10**. It opens on a Home launcher and hosts a growing set of tools — starting with the Report Pages Manager.
 
 ---
 
 ## 🚀 Key Features
 
-- **⚡ Power BI Context-Scoped Shortcut (`Ctrl + Alt + P`)**:
-  - Activates *only* when Power BI Desktop is your active foreground window.
-  - Automatically centers itself right over your active Power BI report canvas.
-  - Leaves your keys unaffected when working in other applications (browser, IDE, Excel).
+- **🏠 Home Launcher**:
+  - The app opens on a Home page with cards for every available tool, so future tools slot in automatically.
 
-- **🔍 Instant Fuzzy Page Search & Navigation**:
-  - Type to filter across report pages in real time.
-  - Hit `Enter` to switch and activate the selected page.
+- **🔍 Instant Page Search**:
+  - Type a page name to get a suggestion dropdown of matching pages.
+  - Picking a suggestion sets it as the active page (and jumps the open report when **Go to page** is enabled).
 
 - **🧭 Go to Page in Open Report**:
   - Toggle **Go to page in Open Report** on, then select any page in the list to jump the currently open Power BI Desktop report straight to that page.
@@ -25,20 +21,17 @@ Think of it as **PowerToys Run / Raycast / VS Code Command Palette for Power BI*
   - `Alt + Up` / `Alt + Down`: Move selected page up or down in the report tab bar.
   - `Ctrl + Shift + Up` / `Ctrl + Shift + Down`: Jump page directly to the beginning or end.
 
+- **↩️ Undo / Redo**:
+  - Full undo and redo (`Ctrl + Z` / `Ctrl + Y`) for reorder, sort, rename, hide, set-active, duplicate and delete.
+
+- **✏️ Inline Rename & Visibility**:
+  - Rename a page in place (`F2`) and toggle hidden/visible, applied directly to the report files.
+
 - **✨ Smart Sorting Modes**:
   - **Sort A-Z**: Alphabetical order.
   - **Sort Z-A**: Reverse alphabetical order.
   - **Natural Numeric Sort**: Smart sorting for numbered pages (`Page 1`, `Page 2`, `Page 10`).
   - **Reverse**: Invert current tab order.
-
-- **💻 Command Palette Mode (`>` token)**:
-  - Type `>` in the search box to trigger actions directly:
-    - `>sort az`
-    - `>sort za`
-    - `>sort natural`
-    - `>sort reverse`
-    - `>save`
-    - `>reload`
 
 - **🔄 Native PBIP / PBIR Support**:
   - Direct read/write to Power BI Enhanced Report format (`definition/pages/pages.json` & `page.json`).
@@ -57,13 +50,17 @@ Think of it as **PowerToys Run / Raycast / VS Code Command Palette for Power BI*
 
 | Shortcut | Action | Scope |
 | :--- | :--- | :--- |
-| `Ctrl + Alt + P` | Open / Center Command Palette | Power BI Desktop window |
-| `Up` / `Down` | Navigate through page list | Command Palette |
-| `Enter` | Set active page / execute command | Command Palette |
-| `Alt + Up` / `Alt + Down` | Move selected page up / down | Command Palette |
-| `Ctrl + Shift + Up` | Move page to top (first tab) | Command Palette |
-| `Ctrl + Shift + Down` | Move page to bottom (last tab) | Command Palette |
-| `Esc` | Clear search / dismiss palette | Command Palette |
+| `Up` / `Down` | Navigate through page list | Report Pages Manager |
+| `Enter` | Set active page | Report Pages Manager |
+| `F2` | Rename selected page | Report Pages Manager |
+| `Alt + Up` / `Alt + Down` | Move selected page up / down | Report Pages Manager |
+| `Ctrl + Shift + Up` | Move page to top (first tab) | Report Pages Manager |
+| `Ctrl + Shift + Down` | Move page to bottom (last tab) | Report Pages Manager |
+| `Ctrl + Z` / `Ctrl + Y` | Undo / redo | Report Pages Manager |
+| `Ctrl + D` | Duplicate selected page | Report Pages Manager |
+| `Delete` | Delete selected page | Report Pages Manager |
+| `Esc` | Clear search | Report Pages Manager |
+
 
 ---
 
@@ -74,16 +71,21 @@ Think of it as **PowerToys Run / Raycast / VS Code Command Palette for Power BI*
 │   ├── SingularPowerTools.pbitool.json  # External tool ribbon manifest
 │   └── register-external-tool.ps1       # One-click install & registration script
 ├── src/
-│   ├── SingularTools.Core/              # PBIP parser, models, hotkey & window detector
+│   ├── SingularTools.Core/              # PBIP parser, models, edit history & window detector
 │   │   ├── Models.cs
 │   │   ├── ReportManager.cs
+│   │   ├── ReportEditHistory.cs
 │   │   ├── PowerBiDetector.cs
-│   │   └── HotkeyManager.cs
+│   │   └── ScreenCaptureService.cs
 │   └── SingularTools.App/               # WinUI 3 modern Fluent UI application
-│       ├── MainWindow.xaml (.cs)
-│       └── MainPage.xaml (.cs)
+│       ├── MainWindow.xaml (.cs)        # Tool shell (NavigationView rail)
+│       ├── Shell/                       # IToolPage contract, ToolRegistry, window sizing
+│       ├── Styles/Tokens.xaml           # Shared spacing/typography/surface resources
+│       └── Tools/                       # One folder per tool
+│           ├── Home/HomePage.xaml (.cs) # Home launcher
+│           └── ReportPagesManager/ReportPagesManagerPage.xaml (.cs)
 └── tests/
-    └── SingularTools.Tests/             # Unit tests verifying PBIP reading & sorting
+    └── SingularTools.Tests/             # Unit tests verifying PBIP reading, sorting, history
         └── ReportManagerTests.cs
 ```
 

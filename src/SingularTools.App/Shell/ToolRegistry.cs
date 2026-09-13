@@ -1,0 +1,27 @@
+using System.Collections.Generic;
+
+namespace SingularTools_App.Shell;
+
+/// <summary>
+/// Central registry of every tool available in the app. To add a future tool,
+/// create a Page implementing <see cref="IToolPage"/> and append a descriptor
+/// here — the shell picks it up automatically.
+/// </summary>
+public static class ToolRegistry
+{
+    public static IReadOnlyList<ToolDescriptor> Tools { get; } = new List<ToolDescriptor>
+    {
+        new(
+            id: "home",
+            title: "Home",
+            description: "Getting started with Singular Tools",
+            glyph: "\uE80F", // Home
+            pageType: typeof(Tools.Home.HomePage)),
+        new(
+            id: "report-pages-manager",
+            title: "Report Pages Manager",
+            description: "Search, reorder, rename and organize report pages",
+            glyph: "\uE8A9", // Page
+            pageType: typeof(Tools.ReportPagesManager.ReportPagesManagerPage))
+    };
+}

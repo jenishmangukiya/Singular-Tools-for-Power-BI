@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="SingularTools_App.Tools.ReportPagesManager.ReportPagesManagerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:SingularTools_App.Tools.ReportPagesManager"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="Transparent" Padding="{StaticResource ToolPagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Row 0 · Search + history + Open Report  -->
+        <Grid Grid.Row="0" Margin="0,0,0,10" ColumnSpacing="{StaticResource SpaceM}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <AutoSuggestBox
+                x:Name="SearchBox"
+                Height="40"
+                VerticalContentAlignment="Center"
+                CornerRadius="{StaticResource RadiusMedium}"
+                PlaceholderText="Search pages..."
+                QuerySubmitted="SearchBox_QuerySubmitted"
+                SuggestionChosen="SearchBox_SuggestionChosen"
+                TextChanged="SearchBox_TextChanged">
+                <AutoSuggestBox.ItemTemplate>
+                    <DataTemplate x:DataType="local:PageItemViewModel">
+                        <StackPanel Padding="0,4" Spacing="2">
+                            <TextBlock Style="{StaticResource RowTitleTextStyle}" Text="{x:Bind DisplayName}" />
+                            <TextBlock Style="{StaticResource RowSubtitleTextStyle}" Text="{x:Bind Subtitle}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </AutoSuggestBox.ItemTemplate>
+            </AutoSuggestBox>
+
+            <StackPanel
+                Grid.Column="1"
+                Orientation="Horizontal"
+                Spacing="{StaticResource SpaceS}">
+                <Button
+                    x:Name="UndoButton"
+                    Width="40"
+                    Height="40"
+                    AutomationProperties.Name="Undo"
+                    Click="Undo_Click"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Undo (Ctrl+Z)">
+                    <FontIcon FontSize="15" Glyph="&#xE7A7;" />
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Z" Modifiers="Control" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+                <Button
+                    x:Name="RedoButton"
+                    Width="40"
+                    Height="40"
+                    AutomationProperties.Name="Redo"
+                    Click="Redo_Click"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Redo (Ctrl+Y)">
+                    <FontIcon FontSize="15" Glyph="&#xE7A6;" />
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Y" Modifiers="Control" />
+                        <KeyboardAccelerator Key="Z" Modifiers="Control,Shift" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+                <Button
+                    x:Name="OpenFolderButton"
+                    Height="40"
+                    Padding="14,0"
+                    Click="OpenFolderButton_Click"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Select a PBIP report folder">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="15" Glyph="&#xE8E5;" />
+                        <TextBlock Text="Open Report" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!--  Row 1 · Actions strip  -->
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                <DropDownButton
+                    x:Name="SortButton"
+                    Height="32"
+                    Padding="10,0"
+                    AutomationProperties.Name="Sort pages"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    ToolTipService.ToolTip="Sort pages">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE8CB;" />
+                        <TextBlock Text="Sort" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Click="SortAz_Click" Text="Sort A to Z">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8CB;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Click="SortZa_Click" Text="Sort Z to A">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8CC;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Click="SortNatural_Click" Text="Natural sort (1, 2, 10)">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8D2;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Click="SortReverse_Click" Text="Reverse order">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B1;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+
+                <ToggleButton
+                    x:Name="GoToPageBtn"
+                    Height="32"
+                    Padding="10,0"
+                    Click="GoToPage_Click"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    ToolTipService.ToolTip="When on, selecting a page navigates the open Power BI Desktop report to that page">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE72A;" />
+                        <TextBlock Text="Go to page" />
+                    </StackPanel>
+                </ToggleButton>
+
+                <Button
+                    x:Name="ReloadButton"
+                    Height="32"
+                    Padding="10,0"
+                    Click="Reload_Click"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    ToolTipService.ToolTip="Re-read the report pages from disk">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                        <TextBlock Text="Reload" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <TextBlock
+                x:Name="PageCountText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="0 pages" />
+        </Grid>
+
+        <!--  Row 2 · Status InfoBar  -->
+        <InfoBar
+            x:Name="StatusBar"
+            Grid.Row="2"
+            Margin="0,0,0,10"
+            IsClosable="True"
+            IsOpen="False" />
+
+        <!--  Row 3 · Content (list + empty states)  -->
+        <Grid Grid.Row="3">
+            <Border x:Name="ListCard" Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!--  List header  -->
+                    <Grid Margin="14,10,14,4" ColumnSpacing="{StaticResource SpaceM}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Pages" />
+                        <StackPanel
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal"
+                            Spacing="{StaticResource SpaceXS}">
+                            <FontIcon
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Glyph="&#xE76F;" />
+                            <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Drag rows to reorder" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ListView
+                        x:Name="PagesListView"
+                        Grid.Row="1"
+                        Padding="6,2,6,6"
+                        AllowDrop="True"
+                        CanDragItems="True"
+                        CanReorderItems="True"
+                        DragItemsCompleted="PagesListView_DragItemsCompleted"
+                        KeyDown="PagesListView_KeyDown"
+                        SelectionChanged="PagesListView_SelectionChanged"
+                        SelectionMode="Single">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="MinHeight" Value="0" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:PageItemViewModel">
+                            <Grid
+                                Margin="0,2"
+                                Padding="8,6"
+                                AutomationProperties.Name="{x:Bind DisplayName}"
+                                ColumnSpacing="{StaticResource SpaceM}"
+                                CornerRadius="{StaticResource RadiusMedium}"
+                                PointerEntered="Row_PointerEntered"
+                                PointerExited="Row_PointerExited">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Grid.ContextFlyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Click="ContextMenu_SetActive_Click" Text="Set as active page">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE735;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="ContextMenu_Rename_Click" Text="Rename (F2)">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AC;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="ContextMenu_Duplicate_Click" Text="Duplicate (Ctrl+D)">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="ContextMenu_ToggleHide_Click" Text="Toggle hidden / visible">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Click="ContextMenu_MoveToTop_Click" Text="Move to top (Ctrl+Shift+Up)">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="ContextMenu_MoveToBottom_Click" Text="Move to bottom (Ctrl+Shift+Down)">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE896;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Click="ContextMenu_Delete_Click" Text="Delete page (Del)">
+                                            <MenuFlyoutItem.Icon><FontIcon Foreground="{ThemeResource SystemFillColorCriticalBrush}" Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Grid.ContextFlyout>
+
+                                <!--  Drag grip  -->
+                                <StackPanel
+                                    Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Opacity="{x:Bind GripOpacity, Mode=OneWay}"
+                                    Orientation="Horizontal"
+                                    Spacing="2"
+                                    ToolTipService.ToolTip="Drag to reorder">
+                                    <StackPanel Spacing="2">
+                                        <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="2">
+                                        <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Ellipse Width="3" Height="3" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!--  Order badge  -->
+                                <Border Grid.Column="1" Style="{StaticResource OrderBadgeStyle}">
+                                    <TextBlock
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind OrderIndexText}" />
+                                </Border>
+
+                                <!--  Page icon tile  -->
+                                <Border
+                                    Grid.Column="2"
+                                    Width="30"
+                                    Height="30"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="{StaticResource RadiusSmall}">
+                                    <FontIcon FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE8A9;" />
+                                </Border>
+
+                                <!--  Name / inline rename  -->
+                                <StackPanel Grid.Column="3" Margin="2,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        Style="{StaticResource RowTitleTextStyle}"
+                                        Text="{x:Bind DisplayName}"
+                                        Visibility="{x:Bind NameVisibility, Mode=OneWay}" />
+                                    <TextBox
+                                        x:Name="RenameBox"
+                                        MinHeight="0"
+                                        Padding="6,1"
+                                        AutomationProperties.Name="Rename page"
+                                        CornerRadius="{StaticResource RadiusSmall}"
+                                        KeyDown="RenameBox_KeyDown"
+                                        LostFocus="RenameBox_LostFocus"
+                                        Tag="{x:Bind Id}"
+                                        Text="{x:Bind EditName, Mode=TwoWay}"
+                                        Visibility="{x:Bind EditVisibility, Mode=OneWay}" />
+                                    <TextBlock Style="{StaticResource RowSubtitleTextStyle}" Text="{x:Bind Subtitle}" />
+                                </StackPanel>
+
+                                <!--  Badges  -->
+                                <StackPanel
+                                    Grid.Column="4"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="{StaticResource SpaceS}">
+                                    <Border
+                                        Padding="{StaticResource BadgePadding}"
+                                        Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                        CornerRadius="{StaticResource RadiusSmall}"
+                                        Visibility="{x:Bind ActiveBadgeVisibility}">
+                                        <TextBlock
+                                            Style="{StaticResource BadgeTextStyle}"
+                                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                            Text="&#x2605; Active" />
+                                    </Border>
+                                    <Border Style="{StaticResource BadgePillStyle}" Visibility="{x:Bind HiddenBadgeVisibility}">
+                                        <TextBlock
+                                            Style="{StaticResource BadgeTextStyle}"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Text="Hidden" />
+                                    </Border>
+                                    <Border Style="{StaticResource BadgePillStyle}">
+                                        <TextBlock
+                                            Style="{StaticResource BadgeTextStyle}"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            FontWeight="Normal"
+                                            Text="{x:Bind SizeText}" />
+                                    </Border>
+                                </StackPanel>
+
+                                <!--  Overflow actions  -->
+                                <Button
+                                    Grid.Column="5"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="More actions"
+                                    Style="{StaticResource IconButtonStyle}"
+                                    Tag="{x:Bind Id}"
+                                    Click="OverflowButton_Click"
+                                    ToolTipService.ToolTip="More actions">
+                                    <FontIcon FontSize="13" Glyph="&#xE712;" />
+                                    <Button.Flyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Click="ContextMenu_SetActive_Click" Text="Set as active page">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE735;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="ContextMenu_Rename_Click" Text="Rename (F2)">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AC;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="ContextMenu_Duplicate_Click" Text="Duplicate (Ctrl+D)">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="MoveUp_Click" Text="Move up (Alt+Up)">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74A;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="MoveDown_Click" Text="Move down (Alt+Down)">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74B;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="ContextMenu_ToggleHide_Click" Text="Toggle hidden / visible">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem Click="ContextMenu_MoveToTop_Click" Text="Move to top">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="ContextMenu_MoveToBottom_Click" Text="Move to bottom">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE896;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem Click="ContextMenu_Delete_Click" Text="Delete page (Del)">
+                                                <MenuFlyoutItem.Icon><FontIcon Foreground="{ThemeResource SystemFillColorCriticalBrush}" Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                </Grid>
+            </Border>
+
+            <!--  Empty: no report loaded  -->
+            <StackPanel
+                x:Name="NoReportPanel"
+                MaxWidth="420"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{StaticResource SpaceM}"
+                Visibility="Collapsed">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontSize="40"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xE8A9;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource ToolTitleTextStyle}"
+                    Text="No report loaded" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Text="Open a Power BI project (.pbip) folder to manage its report pages, reorder tabs, rename or hide pages."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    HorizontalAlignment="Center"
+                    Margin="0,4,0,0"
+                    Click="OpenFolderButton_Click"
+                    Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE8E5;" />
+                        <TextBlock Text="Open Report" />
+                    </StackPanel>
+                </Button>
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Text="Tip: changes you make here are written straight to the report files." />
+            </StackPanel>
+
+            <!--  Empty: filter has no matches  -->
+            <StackPanel
+                x:Name="NoResultsPanel"
+                MaxWidth="420"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{StaticResource SpaceS}"
+                Visibility="Collapsed">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontSize="32"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xE721;" />
+                <TextBlock
+                    x:Name="NoResultsText"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Text="No pages match your search."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    HorizontalAlignment="Center"
+                    Click="ClearSearch_Click"
+                    Style="{StaticResource ToolbarButtonStyle}">
+                    <TextBlock Text="Clear search" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!--  Row 4 · Footer  -->
+        <Grid Grid.Row="4" Margin="4,10,4,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="ReportPathText"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="No report loaded"
+                TextTrimming="CharacterEllipsis" />
+
+            <StackPanel
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="{StaticResource SpaceL}">
+                <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Changes save automatically" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Page>

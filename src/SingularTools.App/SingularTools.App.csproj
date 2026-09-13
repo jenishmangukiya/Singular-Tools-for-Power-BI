@@ -93,9 +93,27 @@
   -->
   <Target Name="CopyXamlResourcesToPublish" AfterTargets="Publish">
     <ItemGroup>
-      <XamlPublishFile Include="$(OutDir)*.xbf" />
+      <XamlPublishFile Include="$(OutDir)**\*.xbf" />
       <XamlPublishFile Include="$(OutDir)$(AssemblyName).pri" Condition="Exists('$(OutDir)$(AssemblyName).pri')" />
     </ItemGroup>
-    <Copy SourceFiles="@(XamlPublishFile)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="false" />
+    <Copy
+      DestinationFiles="@(XamlPublishFile->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="false"
+      SourceFiles="@(XamlPublishFile)" />
+  </Target>
+
+  <!--
+    `dotnet publish` does not reliably copy the Assets folder (icons/logos) for
+    unpackaged WinUI apps, which leaves the window/taskbar icon and in-app logo
+    missing. Copy the whole folder next to the published executable.
+  -->
+  <Target Name="CopyAssetsToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <AssetPublishFile Include="$(OutDir)Assets\**\*.*" />
+    </ItemGroup>
+    <Copy
+      DestinationFiles="@(AssetPublishFile->'$(PublishDir)Assets\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="false"
+      SourceFiles="@(AssetPublishFile)" />
   </Target>
 </Project>

@@ -266,6 +266,107 @@ public class ReportManagerTests
         Assert.False(ScreenCaptureService.HasCaptureForPage(pageId));
     }
 
+    [Fact]
+    public void DeleteActivePage_ShouldActivateFirstPageInOrder()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_ActiveDel_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+
+            var activeId = manager.ActivePageId;
+            Assert.False(string.IsNullOrEmpty(activeId));
+
+            Assert.True(manager.DeletePage(activeId));
+
+            Assert.Equal(manager.Pages[0].Id, manager.ActivePageId);
+            Assert.True(manager.Pages[0].IsActive);
+            Assert.Single(manager.Pages, p => p.IsActive);
+
+            // Persisted active page must match after reload.
+            var reloaded = new ReportManager();
+            reloaded.LoadReport(tempDir);
+            Assert.Equal(reloaded.Pages[0].Id, reloaded.ActivePageId);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void EditHistory_UndoRedo_RestoresPreviousState()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_History_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+
+            using var history = new ReportEditHistory();
+            history.Reset(manager.PagesDirectoryPath);
+
+            var originalFirst = manager.Pages[0].Id;
+            var targetId = manager.Pages[^1].Id;
+
+            Assert.False(history.CanUndo);
+            Assert.False(history.CanRedo);
+
+            manager.MovePageToTop(targetId);
+            manager.SaveChanges();
+            history.Commit();
+
+            Assert.Equal(targetId, manager.Pages[0].Id);
+            Assert.True(history.CanUndo);
+
+            manager.RestoreFromSnapshot(history.Undo()!);
+            Assert.Equal(originalFirst, manager.Pages[0].Id);
+            Assert.True(history.CanRedo);
+
+            manager.RestoreFromSnapshot(history.Redo()!);
+            Assert.Equal(targetId, manager.Pages[0].Id);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RenamePage_ShouldUpdateNameAndPersist()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_Rename_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+
+            var pageId = manager.Pages[0].Id;
+            manager.RenamePage(pageId, "Renamed Page");
+            manager.SaveChanges();
+
+            Assert.Equal("Renamed Page", manager.Pages.First(p => p.Id == pageId).DisplayName);
+
+            var reloaded = new ReportManager();
+            reloaded.LoadReport(tempDir);
+            Assert.Equal("Renamed Page", reloaded.Pages.First(p => p.Id == pageId).DisplayName);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
     private static void CopyDirectory(string sourceDir, string destinationDir)
     {
         Directory.CreateDirectory(destinationDir);

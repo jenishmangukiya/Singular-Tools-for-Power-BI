@@ -401,12 +401,14 @@ public class ReportManager
         var targetPage = Pages[targetIndex];
         Pages.RemoveAt(targetIndex);
 
-        // If the deleted page was active, activate the nearest page
+        // If the deleted page was active, make the first page in order active.
         if (string.Equals(ActivePageId, targetPage.Id, StringComparison.OrdinalIgnoreCase))
         {
-            var newActiveIndex = Math.Min(targetIndex, Pages.Count - 1);
-            ActivePageId = Pages[newActiveIndex].Id;
-            Pages[newActiveIndex].IsActive = true;
+            ActivePageId = Pages[0].Id;
+            foreach (var p in Pages)
+            {
+                p.IsActive = string.Equals(p.Id, ActivePageId, StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         // Delete page directory from disk
@@ -524,6 +526,37 @@ public class ReportManager
         var tempFile = PagesMetadataPath + ".tmp";
         File.WriteAllText(tempFile, rootNode.ToJsonString(options));
         File.Move(tempFile, PagesMetadataPath, overwrite: true);
+    }
+
+    /// <summary>
+    /// Replaces the current page definitions with a previously captured snapshot
+    /// (a full copy of the pages directory) and reloads the report.
+    /// </summary>
+    public void RestoreFromSnapshot(string snapshotDirectory)
+    {
+        if (string.IsNullOrEmpty(PagesDirectoryPath) || !Directory.Exists(snapshotDirectory))
+        {
+            return;
+        }
+
+        if (Directory.Exists(PagesDirectoryPath))
+        {
+            foreach (var dir in Directory.GetDirectories(PagesDirectoryPath))
+            {
+                try { Directory.Delete(dir, recursive: true); } catch { }
+            }
+            foreach (var file in Directory.GetFiles(PagesDirectoryPath))
+            {
+                try { File.Delete(file); } catch { }
+            }
+        }
+        else
+        {
+            Directory.CreateDirectory(PagesDirectoryPath);
+        }
+
+        CopyDirectory(snapshotDirectory, PagesDirectoryPath);
+        Reload();
     }
 
     public PageVisualInfo GetPageVisuals(string pageId)
