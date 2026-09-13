@@ -13,6 +13,7 @@
 - Test all: `dotnet test SingularPowerTools.slnx`
 - Single test: `dotnet test tests/SingularTools.Tests/SingularTools.Tests.csproj --filter FullyQualifiedName~NaturalSort`
 - No lint/format/codegen config; the compiler is the only check.
+- Publishing latest release `dotnet publish "src\SingularTools.App\SingularTools.App.csproj" -c Release -o "$env:LOCALAPPDATA\SingularPowerTools"`
 
 ## Test fixture gotcha (read before touching tests or the demo report)
 - `dotnet test` is currently **red: 8/13 fail**. `Demo PBI Report.Report/definition/pages/pages.json` has 2 pages, but `ReportManagerTests` asserts 3 (`P1`, `P2`, `Page 3`) and a `clusteredBarChart` on `P1`. Tests are coupled to the checked-in demo report; update both together.
@@ -20,6 +21,8 @@
 
 ## Architecture
 - Add a tool: implement `src/SingularTools.App/Shell/IToolPage.cs` and append a descriptor in `Shell/ToolRegistry.cs`; `MainWindow` builds navigation automatically. One folder per tool under `Tools/`.
+- Report state is shared: `App.Workspace` (`Shell/ReportWorkspace.cs`) owns the single `ReportManager` + `ReportEditHistory` for the whole app. Tools must read/open reports through it (`OpenReport`, `Reload`, `Commit`) instead of constructing their own `ReportManager`; it raises `Changed` when the session updates. The Home page opens reports via `ReportPicker.PickReportFolderAsync`; RPM's empty state routes users back to Home.
+- Transient feedback must go through `ToastService.Show(...)` (`Shell/ToastService.cs`), never a page-local `InfoBar`/`TeachingTip`. `MainWindow` renders toasts as a non-interactive overlay (`ToastHost`) pinned bottom-right so they never reflow or intercept the page.
 - `ReportManager` is the whole PBIR layer. A folder is a valid report when `definition/pages/pages.json` exists. Page IDs are 20-char lowercase hex; `DuplicatePage` generates random 10-byte IDs and deep-copies the page folder.
 - Writes are atomic: `SaveChanges` writes `pages.json.tmp` then `File.Move(..., overwrite: true)`. Call `SaveChanges()` after mutating `Pages`, and `Reload()` to re-read from disk.
 - `ReportEditHistory` is snapshot-based (full copies under `%LOCALAPPDATA%\SingularPowerTools\history\<guid>`), not command-based: `Reset` baseline, `Commit` after each edit, then feed the dir from `Undo()`/`Redo()` to `RestoreFromSnapshot`.

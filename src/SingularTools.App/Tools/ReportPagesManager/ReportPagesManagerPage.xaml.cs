@@ -1,7 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,7 +9,6 @@ using Microsoft.UI.Xaml.Media;
 using SingularTools.Core;
 using SingularTools.Core.Models;
 using SingularTools_App.Shell;
-using Windows.Storage.Pickers;
 
 namespace SingularTools_App.Tools.ReportPagesManager;
 
@@ -81,38 +79,22 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     public string Description => "Search, reorder, rename and organize report pages";
     public string Glyph => "\uE8A9";
 
-    private readonly ReportManager _reportManager = new();
+    private ReportManager _reportManager => App.Workspace.Manager;
     private readonly ObservableCollection<PageItemViewModel> _items = new();
     private bool _suppressNavigation;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _statusTimer;
-    private ReportEditHistory? _history;
 
     public ReportPagesManagerPage()
     {
         InitializeComponent();
         PagesListView.ItemsSource = _items;
 
-        try
-        {
-            _statusTimer = DispatcherQueue.CreateTimer();
-            _statusTimer.IsRepeating = false;
-            _statusTimer.Tick += (_, _) => StatusBar.IsOpen = false;
-        }
-        catch { }
-
         Loaded += ReportPagesManagerPage_Loaded;
-        Unloaded += ReportPagesManagerPage_Unloaded;
-    }
-
-    private void ReportPagesManagerPage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        _history?.Dispose();
-        _history = null;
     }
 
     public void OnActivated()
     {
         RefreshList();
+        UpdateReportStatus();
         FocusSearchBox();
     }
 
@@ -130,16 +112,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         try
         {
             App.Log("ReportPagesManagerPage loaded.");
-            var discovered = ReportManager.DiscoverReportFolder();
-            if (discovered != null)
-            {
-                LoadReportFolder(discovered);
-            }
-            else
-            {
-                UpdateEmptyStates();
-            }
-
+            UpdateReportStatus();
+            RefreshList();
             FocusSearchBox();
         }
         catch (Exception ex)
@@ -148,33 +122,10 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         }
     }
 
-    public void LoadReportFolder(string path)
+    private void UpdateReportStatus()
     {
-        try
-        {
-            if (_reportManager.LoadReport(path))
-            {
-                ReportPathText.Text = _reportManager.ReportFolderPath;
-
-                _history?.Dispose();
-                _history = new ReportEditHistory();
-                _history.Reset(_reportManager.PagesDirectoryPath);
-                UpdateHistoryButtons();
-
-                RefreshList();
-                ShowStatus(InfoBarSeverity.Success, $"Loaded {_reportManager.Pages.Count} pages from '{Path.GetFileName(_reportManager.ReportFolderPath)}'.");
-            }
-            else
-            {
-                ShowStatus(InfoBarSeverity.Error, "That folder does not contain definition/pages/pages.json.", autoDismiss: false);
-            }
-        }
-        catch (Exception ex)
-        {
-            ShowStatus(InfoBarSeverity.Error, $"Could not load report: {ex.Message}", autoDismiss: false);
-        }
-
-        UpdateEmptyStates();
+        if (ReportPathText == null) return;
+        ReportPathText.Text = App.Workspace.HasReport ? App.Workspace.ReportName : "No report loaded";
     }
 
     public void RefreshList()
@@ -239,42 +190,37 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void ReloadPages()
     {
-        _reportManager.Reload();
+        App.Workspace.Reload();
         RefreshList();
-        _history?.Reset(_reportManager.PagesDirectoryPath);
         UpdateHistoryButtons();
         ShowStatus(InfoBarSeverity.Informational, "Reloaded pages from the report definition.");
     }
 
     private void RecordHistory()
     {
-        try
-        {
-            _history?.Commit();
-        }
-        catch (Exception ex)
-        {
-            App.Log($"History commit failed: {ex.Message}");
-        }
+        App.Workspace.Commit();
         UpdateHistoryButtons();
     }
 
     private void UpdateHistoryButtons()
     {
-        if (UndoButton != null) UndoButton.IsEnabled = _history?.CanUndo == true;
-        if (RedoButton != null) RedoButton.IsEnabled = _history?.CanRedo == true;
+        var history = App.Workspace.History;
+        if (UndoButton != null) UndoButton.IsEnabled = history?.CanUndo == true;
+        if (RedoButton != null) RedoButton.IsEnabled = history?.CanRedo == true;
     }
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
-        if (_history == null || !_history.CanUndo) return;
-        ApplySnapshot(_history.Undo(), "Undid the last change.");
+        var history = App.Workspace.History;
+        if (history == null || !history.CanUndo) return;
+        ApplySnapshot(history.Undo(), "Undid the last change.");
     }
 
     private void Redo_Click(object sender, RoutedEventArgs e)
     {
-        if (_history == null || !_history.CanRedo) return;
-        ApplySnapshot(_history.Redo(), "Redid the last change.");
+        var history = App.Workspace.History;
+        if (history == null || !history.CanRedo) return;
+        ApplySnapshot(history.Redo(), "Redid the last change.");
     }
 
     private void ApplySnapshot(string? snapshot, string message)
@@ -299,23 +245,18 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         UpdateHistoryButtons();
     }
 
-    private void ShowStatus(InfoBarSeverity severity, string message, bool autoDismiss = true)
+    private static void ShowStatus(InfoBarSeverity severity, string message, bool autoDismiss = true)
     {
-        StatusBar.Severity = severity;
-        StatusBar.Message = message;
-        StatusBar.IsOpen = true;
-
-        try
+        var toastSeverity = severity switch
         {
-            if (_statusTimer == null) return;
-            _statusTimer.Stop();
-            if (autoDismiss)
-            {
-                _statusTimer.Interval = TimeSpan.FromSeconds(4);
-                _statusTimer.Start();
-            }
-        }
-        catch { }
+            InfoBarSeverity.Success => ToastSeverity.Success,
+            InfoBarSeverity.Warning => ToastSeverity.Warning,
+            InfoBarSeverity.Error => ToastSeverity.Error,
+            _ => ToastSeverity.Informational
+        };
+
+        // Non-dismissing messages just stay on screen longer.
+        ToastService.Show(message, toastSeverity, autoDismiss ? null : 8000);
     }
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -329,6 +270,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         if (query.Length == 0)
         {
             sender.ItemsSource = null;
+            sender.IsSuggestionListOpen = false;
             return;
         }
 
@@ -355,13 +297,36 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
                    ?? _items.FirstOrDefault(p => string.Equals(p.DisplayName, queryText, StringComparison.OrdinalIgnoreCase))
                    ?? _items.FirstOrDefault(p => p.DisplayName.Contains(queryText, StringComparison.OrdinalIgnoreCase));
 
+        // Close the dropdown explicitly before moving focus / clearing text.
+        // Relying on the control's automatic dismissal leaves the popup open,
+        // so it would only close on a second click.
+        sender.IsSuggestionListOpen = false;
+        sender.ItemsSource = null;
+        sender.Text = string.Empty;
+
         if (page == null)
         {
             return;
         }
 
-        ActivatePage(page);
-        sender.Text = string.Empty;
+        RevealPageInList(page);
+    }
+
+    /// <summary>Selects and scrolls to a page in the list without changing the active page.</summary>
+    private void RevealPageInList(PageItemViewModel page)
+    {
+        var wasSuppressed = _suppressNavigation;
+        _suppressNavigation = true;
+        try
+        {
+            PagesListView.SelectedItem = page;
+            PagesListView.ScrollIntoView(page);
+            PagesListView.Focus(FocusState.Programmatic);
+        }
+        finally
+        {
+            _suppressNavigation = wasSuppressed;
+        }
     }
 
     private void ClearSearch_Click(object sender, RoutedEventArgs e)
@@ -872,19 +837,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         }
     }
 
-    private async void OpenFolderButton_Click(object sender, RoutedEventArgs e)
+    private void GoToHome_Click(object sender, RoutedEventArgs e)
     {
-        var folderPicker = new FolderPicker();
-        folderPicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
-        folderPicker.FileTypeFilter.Add("*");
-
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.CurrentMainWindow);
-        WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
-
-        var folder = await folderPicker.PickSingleFolderAsync();
-        if (folder != null)
-        {
-            LoadReportFolder(folder.Path);
-        }
+        App.CurrentMainWindow?.NavigateToTool("home");
     }
 }

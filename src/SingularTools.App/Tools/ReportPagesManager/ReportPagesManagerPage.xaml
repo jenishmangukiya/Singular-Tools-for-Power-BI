@@ -12,7 +12,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -73,18 +72,6 @@
                         <KeyboardAccelerator Key="Y" Modifiers="Control" />
                         <KeyboardAccelerator Key="Z" Modifiers="Control,Shift" />
                     </Button.KeyboardAccelerators>
-                </Button>
-                <Button
-                    x:Name="OpenFolderButton"
-                    Height="40"
-                    Padding="14,0"
-                    Click="OpenFolderButton_Click"
-                    Style="{StaticResource ToolbarButtonStyle}"
-                    ToolTipService.ToolTip="Select a PBIP report folder">
-                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
-                        <FontIcon FontSize="15" Glyph="&#xE8E5;" />
-                        <TextBlock Text="Open Report" />
-                    </StackPanel>
                 </Button>
             </StackPanel>
         </Grid>
@@ -161,16 +148,8 @@
                 Text="0 pages" />
         </Grid>
 
-        <!--  Row 2 · Status InfoBar  -->
-        <InfoBar
-            x:Name="StatusBar"
-            Grid.Row="2"
-            Margin="0,0,0,10"
-            IsClosable="True"
-            IsOpen="False" />
-
-        <!--  Row 3 · Content (list + empty states)  -->
-        <Grid Grid.Row="3">
+        <!--  Row 2 · Content (list + empty states)  -->
+        <Grid Grid.Row="2">
             <Border x:Name="ListCard" Style="{StaticResource CardBorderStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -428,17 +407,17 @@
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource MutedCaptionTextStyle}"
-                    Text="Open a Power BI project (.pbip) folder to manage its report pages, reorder tabs, rename or hide pages."
+                    Text="Open a Power BI project (.pbip) folder from the Home page to manage its report pages."
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
                 <Button
                     HorizontalAlignment="Center"
                     Margin="0,4,0,0"
-                    Click="OpenFolderButton_Click"
+                    Click="GoToHome_Click"
                     Style="{StaticResource AccentButtonStyle}">
                     <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
-                        <FontIcon FontSize="14" Glyph="&#xE8E5;" />
-                        <TextBlock Text="Open Report" />
+                        <FontIcon FontSize="14" Glyph="&#xE80F;" />
+                        <TextBlock Text="Go to Home" />
                     </StackPanel>
                 </Button>
                 <TextBlock
@@ -476,8 +455,8 @@
             </StackPanel>
         </Grid>
 
-        <!--  Row 4 · Footer  -->
-        <Grid Grid.Row="4" Margin="4,10,4,0">
+        <!--  Row 3 · Footer  -->
+        <Grid Grid.Row="3" Margin="4,10,4,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

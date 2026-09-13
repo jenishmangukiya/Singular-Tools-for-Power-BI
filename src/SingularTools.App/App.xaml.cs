@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Microsoft.UI.Xaml;
+using SingularTools_App.Shell;
 
 namespace SingularTools_App;
 
@@ -8,6 +9,9 @@ public partial class App : Application
 {
     public static MainWindow? CurrentMainWindow { get; private set; }
     public static string[] StartupArgs { get; private set; } = Array.Empty<string>();
+
+    /// <summary>The single report session shared by every tool page.</summary>
+    public static ReportWorkspace Workspace { get; } = new();
 
     public static string LogPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="SingularTools_App.Shell.ToastCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Border
+        MaxWidth="380"
+        Padding="12,10"
+        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+        Style="{StaticResource CardBorderStyle}">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="ToastTransform" X="0" />
+        </Border.RenderTransform>
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid
+                Width="18"
+                Height="18"
+                Margin="0,1,0,0"
+                VerticalAlignment="Top">
+                <FontIcon
+                    x:Name="InfoIcon"
+                    FontSize="16"
+                    Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                    Glyph="&#xE946;"
+                    Visibility="Collapsed" />
+                <FontIcon
+                    x:Name="SuccessIcon"
+                    FontSize="16"
+                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                    Glyph="&#xE73E;"
+                    Visibility="Collapsed" />
+                <FontIcon
+                    x:Name="WarningIcon"
+                    FontSize="16"
+                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                    Glyph="&#xE7BA;"
+                    Visibility="Collapsed" />
+                <FontIcon
+                    x:Name="ErrorIcon"
+                    FontSize="16"
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Glyph="&#xE783;"
+                    Visibility="Collapsed" />
+            </Grid>
+
+            <TextBlock
+                x:Name="MessageText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                FontSize="13"
+                TextWrapping="Wrap" />
+        </Grid>
+    </Border>
+</UserControl>

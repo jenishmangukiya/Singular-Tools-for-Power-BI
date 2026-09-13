@@ -9,7 +9,15 @@
     mc:Ignorable="d">
 
     <Grid Background="Transparent" Padding="{StaticResource ToolPagePadding}">
-        <ScrollViewer HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer
+            Grid.Row="0"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="{StaticResource SpaceXXL}">
 
                 <!--  Hero  -->
@@ -34,6 +42,38 @@
                         <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Utilities for Power BI Desktop authors" />
                     </StackPanel>
                 </Grid>
+
+                <!--  Report  -->
+                <StackPanel Spacing="{StaticResource SpaceM}">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Report" />
+                    <Border Padding="16,14" Style="{StaticResource CardBorderStyle}">
+                        <Grid ColumnSpacing="{StaticResource SpaceL}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="{StaticResource SpaceXXS}">
+                                <TextBlock x:Name="ReportNameText" Style="{StaticResource RowTitleTextStyle}" Text="No report loaded" />
+                                <TextBlock
+                                    x:Name="ReportHintText"
+                                    Style="{StaticResource RowSubtitleTextStyle}"
+                                    Text="Open a Power BI project (.pbip) folder to manage its report pages."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button
+                                x:Name="OpenReportButton"
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Click="OpenReportButton_Click"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                    <FontIcon FontSize="14" Glyph="&#xE8E5;" />
+                                    <TextBlock Text="Open Report" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+                </StackPanel>
 
                 <!--  Tools  -->
                 <StackPanel Spacing="{StaticResource SpaceM}">
@@ -78,5 +118,24 @@
                 <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="More tools are on the way." />
             </StackPanel>
         </ScrollViewer>
+
+        <!--  Footer: opened report + auto-save note  -->
+        <Grid Grid.Row="1" Margin="4,12,4,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="ReportPathText"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="No report loaded"
+                TextTrimming="CharacterEllipsis" />
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="Changes save automatically" />
+        </Grid>
     </Grid>
 </Page>

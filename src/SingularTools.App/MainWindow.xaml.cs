@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -25,11 +26,14 @@ public sealed partial class MainWindow : Window
     private const int SW_SHOW = 5;
 
     private bool _hasInitializedPosition = false;
+    private readonly Dictionary<ToastCard, Microsoft.UI.Dispatching.DispatcherQueueTimer> _toastTimers = new();
 
     public MainWindow()
     {
         App.Log("MainWindow initializing...");
         InitializeComponent();
+
+        ToastService.Requested += OnToastRequested;
 
         _ = BrandAssets.ApplyAsync(AppTitleBarLogo);
 
@@ -229,5 +233,55 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+    }
+
+    private void OnToastRequested(ToastRequest request)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => AddToast(request));
+            return;
+        }
+
+        AddToast(request);
+    }
+
+    private void AddToast(ToastRequest request)
+    {
+        if (ToastHost == null) return;
+
+        // Keep only a handful of toasts on screen at once.
+        while (ToastHost.Children.Count >= 4)
+        {
+            if (ToastHost.Children[0] is ToastCard oldest && _toastTimers.TryGetValue(oldest, out var oldTimer))
+            {
+                oldTimer.Stop();
+                _toastTimers.Remove(oldest);
+            }
+            ToastHost.Children.RemoveAt(0);
+        }
+
+        var card = new ToastCard();
+        card.Apply(request.Severity, request.Message);
+        ToastHost.Children.Add(card);
+        card.PlayIn();
+
+        var timer = DispatcherQueue.CreateTimer();
+        timer.IsRepeating = false;
+        timer.Interval = TimeSpan.FromMilliseconds(request.DurationMs);
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            _toastTimers.Remove(card);
+            card.PlayOut(() =>
+            {
+                if (ToastHost.Children.Contains(card))
+                {
+                    ToastHost.Children.Remove(card);
+                }
+            });
+        };
+        _toastTimers[card] = timer;
+        timer.Start();
     }
 }
