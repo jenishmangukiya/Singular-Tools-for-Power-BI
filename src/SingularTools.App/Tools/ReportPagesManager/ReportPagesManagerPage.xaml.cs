@@ -490,6 +490,18 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         var confirmed = await ConfirmDeleteAsync(pageName);
         if (!confirmed) return;
 
+        // If the page being removed is the one Power BI currently has open, move
+        // Power BI onto another page first so it doesn't fail applying the
+        // external change with "ActivePageName not found".
+        if (string.Equals(_reportManager.ActivePageId, id, StringComparison.OrdinalIgnoreCase))
+        {
+            var fallback = _reportManager.Pages.FirstOrDefault(p => !string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (fallback != null)
+            {
+                PowerBiNavigator.TryGoToPage(fallback.DisplayName, out _);
+            }
+        }
+
         if (App.Workspace.ApplyEditWithResult(m => m.DeletePage(id), managerWritesInternally: true))
         {
             RefreshList();

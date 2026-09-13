@@ -22,6 +22,12 @@ public static class ToolRegistry
             title: "Report Pages Manager",
             description: "Search, reorder, rename and organize report pages",
             glyph: "\uE8A9", // Page
-            pageType: typeof(Tools.ReportPagesManager.ReportPagesManagerPage))
+            pageType: typeof(Tools.ReportPagesManager.ReportPagesManagerPage)),
+        new(
+            id: "report-publishing-manager",
+            title: "Report Publishing Manager",
+            description: "Publish a report to multiple Power BI workspaces at once",
+            glyph: "\uE724", // Send
+            pageType: typeof(Tools.ReportPublishingManager.ReportPublishingManagerPage))
     };
 }

@@ -203,6 +203,7 @@ public class ReportManager
         }
 
         Pages = orderedList;
+        EnsureValidActivePage();
     }
 
     public void MovePage(int fromIndex, int toIndex)
@@ -411,7 +412,15 @@ public class ReportManager
             }
         }
 
-        // Delete page directory from disk
+        ReindexPages();
+
+        // Persist the new page order + active page BEFORE removing the folder.
+        // Otherwise pages.json briefly references a page whose folder is already
+        // gone, and Power BI (which validates on external reads) raises
+        // "ActivePageName not found".
+        SaveChanges();
+
+        // Now remove the page directory from disk.
         if (Directory.Exists(targetPage.FolderPath))
         {
             try
@@ -423,8 +432,6 @@ public class ReportManager
             }
         }
 
-        ReindexPages();
-        SaveChanges();
         return true;
     }
 
@@ -490,6 +497,10 @@ public class ReportManager
     public void SaveChanges()
     {
         if (string.IsNullOrEmpty(PagesMetadataPath)) return;
+
+        // Never persist an active page that does not exist (e.g. one deleted
+        // externally or removed in an earlier session) — fall back to the first.
+        EnsureValidActivePage();
 
         JsonNode? rootNode = null;
         if (File.Exists(PagesMetadataPath))
@@ -651,6 +662,31 @@ public class ReportManager
         for (int i = 0; i < Pages.Count; i++)
         {
             Pages[i].OrderIndex = i;
+        }
+    }
+
+    /// <summary>
+    /// Guarantees <see cref="ActivePageId"/> names a page that actually exists,
+    /// falling back to the first page in order. Prevents writing an
+    /// activePageName that Power BI Desktop would reject as "not found".
+    /// </summary>
+    private void EnsureValidActivePage()
+    {
+        if (Pages.Count == 0)
+        {
+            ActivePageId = string.Empty;
+            return;
+        }
+
+        if (Pages.Any(p => string.Equals(p.Id, ActivePageId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        ActivePageId = Pages[0].Id;
+        foreach (var page in Pages)
+        {
+            page.IsActive = string.Equals(page.Id, ActivePageId, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using SingularTools.Core;
 using SingularTools.Core.Models;
 using Xunit;
@@ -360,6 +361,78 @@ public class ReportManagerTests
             var reloaded = new ReportManager();
             reloaded.LoadReport(tempDir);
             Assert.Equal("Renamed Page", reloaded.Pages.First(p => p.Id == pageId).DisplayName);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void DeleteActivePage_PersistedMetadataShouldNeverReferenceDeletedPage()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_DelMeta_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            Assert.True(manager.Pages.Count >= 2);
+
+            var activeId = manager.ActivePageId;
+            Assert.True(manager.DeletePage(activeId));
+
+            // pages.json must no longer list the deleted page, and its active page
+            // must be one that still exists on disk (Power BI validates this).
+            var pagesJsonPath = Path.Combine(tempDir, "definition", "pages", "pages.json");
+            var node = JsonNode.Parse(File.ReadAllText(pagesJsonPath))!;
+            var order = node["pageOrder"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
+
+            Assert.DoesNotContain(activeId, order);
+
+            var persistedActive = node["activePageName"]!.GetValue<string>();
+            Assert.Contains(persistedActive, order);
+            Assert.True(Directory.Exists(Path.Combine(tempDir, "definition", "pages", persistedActive)));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void SaveChanges_WhenActivePageMissing_ShouldFallbackToFirstPage()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_ActiveFix_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var firstPageId = manager.Pages[0].Id;
+
+            // Simulate an invalid activePageName written by another tool/session.
+            var pagesJsonPath = Path.Combine(tempDir, "definition", "pages", "pages.json");
+            var node = JsonNode.Parse(File.ReadAllText(pagesJsonPath))!;
+            node["activePageName"] = "00000000000000000000";
+            File.WriteAllText(pagesJsonPath, node.ToJsonString());
+
+            var reloaded = new ReportManager();
+            reloaded.LoadReport(tempDir);
+
+            // Reload resolves the bogus active page to the first page in memory.
+            Assert.Equal(firstPageId, reloaded.ActivePageId);
+            Assert.True(reloaded.Pages[0].IsActive);
+
+            reloaded.SaveChanges();
+
+            // ...and the correction is persisted, never the invalid value.
+            var saved = JsonNode.Parse(File.ReadAllText(pagesJsonPath))!;
+            Assert.Equal(firstPageId, saved["activePageName"]!.GetValue<string>());
         }
         finally
         {
