@@ -127,7 +127,7 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
         if (!App.Workspace.HasReport) return;
 
         var palette = SemanticColorService.DefaultPalette;
-        var stored = SemanticColorRuleStore.Load(App.Workspace.ReportPath);
+        var stored = ReportConfigStore.Load(App.Workspace.ReportPath).GetColorSyncRules();
         var index = 0;
 
         foreach (var rule in stored)
@@ -149,9 +149,16 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
     {
         if (!App.Workspace.HasReport) return;
 
-        SemanticColorRuleStore.Save(App.Workspace.ReportPath, _items
+        var config = ReportConfigStore.Load(App.Workspace.ReportPath);
+        config.SetColorSyncRules(_items
             .Where(i => !string.IsNullOrWhiteSpace(i.Value))
             .Select(i => new SemanticColorRule { Value = i.Value, Hex = i.Hex }));
+
+        if (!ReportConfigStore.Save(App.Workspace.ReportPath, config))
+        {
+            App.Log("Could not write singular-tools.json to the report project folder.");
+            ToastService.Show("Could not save values to the report project folder.", ToastSeverity.Warning);
+        }
     }
 
     private void UpdateEmptyStates()

@@ -17,16 +17,28 @@ public class SemanticColorServiceTests
 
     private string GetDemoReportPath()
     {
-        var current = Directory.GetCurrentDirectory();
-        while (current != null && !File.Exists(Path.Combine(current, "Demo PBI Report.pbip")))
+        var candidates = new[]
         {
+            string.Empty,
+            Path.Combine("Assets", "Test_PBI_Report")
+        };
+
+        var current = Directory.GetCurrentDirectory();
+        while (current != null)
+        {
+            foreach (var relative in candidates)
+            {
+                var root = Path.Combine(current, relative);
+                if (File.Exists(Path.Combine(root, "Demo PBI Report.pbip")))
+                {
+                    return Path.Combine(root, "Demo PBI Report.Report");
+                }
+            }
+
             current = Directory.GetParent(current)?.FullName;
         }
 
-        if (current == null)
-            throw new DirectoryNotFoundException("Could not locate Demo PBI Report.pbip");
-
-        return Path.Combine(current, "Demo PBI Report.Report");
+        throw new DirectoryNotFoundException("Could not locate Demo PBI Report.pbip");
     }
 
     private static string VisualPath(string reportRoot, string visual)

@@ -13,6 +13,7 @@ namespace SingularTools.Core;
 public class ReportManager
 {
     public string ReportFolderPath { get; private set; } = string.Empty;
+    public string ProjectRootPath { get; private set; } = string.Empty;
     public string PagesMetadataPath { get; private set; } = string.Empty;
     public string PagesDirectoryPath { get; private set; } = string.Empty;
 
@@ -120,6 +121,7 @@ public class ReportManager
         }
 
         ReportFolderPath = Path.GetFullPath(folderPath);
+        ProjectRootPath = ReportConfigStore.ResolveProjectRoot(ReportFolderPath);
         PagesMetadataPath = Path.Combine(ReportFolderPath, "definition", "pages", "pages.json");
         PagesDirectoryPath = Path.Combine(ReportFolderPath, "definition", "pages");
 

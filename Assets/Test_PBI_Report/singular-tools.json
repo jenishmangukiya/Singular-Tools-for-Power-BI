@@ -1,0 +1,14 @@
+{
+  "features": {
+    "colorSync": {
+      "rules": [
+        {
+          "value": "2013",
+          "hex": "#2AFF19"
+        }
+      ]
+    }
+  },
+  "schemaVersion": 1,
+  "tool": "Singular Tools"
+}
