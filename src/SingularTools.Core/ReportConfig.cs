@@ -88,7 +88,11 @@ public sealed class ReportConfig
             rules.Add(new SemanticColorRule
             {
                 Value = value,
-                Hex = rule["hex"]?.ToString() ?? string.Empty
+                Hex = rule["hex"]?.ToString() ?? string.Empty,
+                Scope = string.Equals(rule["scope"]?.ToString(), "pages", StringComparison.OrdinalIgnoreCase)
+                    ? SemanticColorScope.Pages
+                    : SemanticColorScope.Report,
+                PageIds = ReadPageIds(rule["pageIds"] as JsonArray)
             });
         }
 
@@ -103,15 +107,43 @@ public sealed class ReportConfig
 
         foreach (var rule in rules)
         {
-            array.Add(new JsonObject
+            var node = new JsonObject
             {
                 ["value"] = rule.Value,
-                ["hex"] = rule.Hex
-            });
+                ["hex"] = rule.Hex,
+                ["scope"] = rule.Scope == SemanticColorScope.Pages ? "pages" : "report"
+            };
+
+            if (rule.Scope == SemanticColorScope.Pages)
+            {
+                var pageIds = new JsonArray();
+                foreach (var id in rule.PageIds ?? new List<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(id)) pageIds.Add(id);
+                }
+
+                node["pageIds"] = pageIds;
+            }
+
+            array.Add(node);
         }
 
         section[RulesKey] = array;
         SetFeatureSection(ColorSyncFeature, section);
+    }
+
+    private static List<string> ReadPageIds(JsonArray? array)
+    {
+        var ids = new List<string>();
+        if (array == null) return ids;
+
+        foreach (var node in array)
+        {
+            var id = node?.ToString();
+            if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+        }
+
+        return ids;
     }
 
     private int ReadSchemaVersion()

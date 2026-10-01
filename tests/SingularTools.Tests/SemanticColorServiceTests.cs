@@ -12,6 +12,7 @@ namespace SingularTools.Tests;
 public class SemanticColorServiceTests
 {
     private const string ColoredPage = "03d23146c353b39f1666";
+    private const string SecondPage = "6ce61a33dfeca0131c91";
     private const string BarVisual = "e22efc042b68c0b157de";
     private const string TableVisual = "9ab413562c85b9b59dcb";
 
@@ -42,7 +43,10 @@ public class SemanticColorServiceTests
     }
 
     private static string VisualPath(string reportRoot, string visual)
-        => Path.Combine(reportRoot, "definition", "pages", ColoredPage, "visuals", visual, "visual.json");
+        => VisualPath(reportRoot, ColoredPage, visual);
+
+    private static string VisualPath(string reportRoot, string page, string visual)
+        => Path.Combine(reportRoot, "definition", "pages", page, "visuals", visual, "visual.json");
 
     [Fact]
     public void ApplyRules_RecolorsExistingValues_AndIsIdempotent()
@@ -237,14 +241,129 @@ public class SemanticColorServiceTests
             manager.LoadReport(tempDir);
             var service = new SemanticColorService();
 
-            Assert.Null(service.GetAppliedColor(manager, "DefinitelyNotPresent"));
+            Assert.Null(service.GetAppliedColor(manager, new SemanticColorRule { Value = "DefinitelyNotPresent" }));
 
             service.ApplyRules(manager, new List<SemanticColorRule>
             {
                 new() { Value = "Velo", Hex = "#00AA00" }
             });
 
-            Assert.Equal("#00AA00", service.GetAppliedColor(manager, "Velo"));
+            Assert.Equal("#00AA00", service.GetAppliedColor(manager, new SemanticColorRule { Value = "Velo" }));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ApplyRules_PageScoped_OnlyTouchesSelectedPages()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorPageScope_");
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            var selectedBar = VisualPath(tempDir, ColoredPage, BarVisual);
+            var otherBar = VisualPath(tempDir, SecondPage, BarVisual);
+            var otherBefore = File.ReadAllText(otherBar);
+
+            var result = service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new()
+                {
+                    Value = "Velo",
+                    Hex = "#00AA00",
+                    Scope = SemanticColorScope.Pages,
+                    PageIds = new List<string> { ColoredPage }
+                }
+            });
+
+            Assert.True(result.SelectorsChanged >= 7);
+            Assert.Contains("#00AA00", File.ReadAllText(selectedBar));
+            Assert.Equal(otherBefore, File.ReadAllText(otherBar));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ApplyRules_PageLevelOverridesReportLevel()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorPrecedence_");
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new() { Value = "Velo", Hex = "#111111", Scope = SemanticColorScope.Report },
+                new()
+                {
+                    Value = "Velo",
+                    Hex = "#222222",
+                    Scope = SemanticColorScope.Pages,
+                    PageIds = new List<string> { ColoredPage }
+                }
+            });
+
+            // Page rule wins on its page...
+            Assert.Equal("'#222222'", BarChartFillFor(VisualPath(tempDir, ColoredPage, BarVisual), "Product", "'Velo'"));
+            // ...and the report rule still applies everywhere else.
+            Assert.Equal("'#111111'", BarChartFillFor(VisualPath(tempDir, SecondPage, BarVisual), "Product", "'Velo'"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void GetAppliedColor_RespectsPageScope()
+    {
+        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorReadScope_");
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+            var service = new SemanticColorService();
+
+            service.ApplyRules(manager, new List<SemanticColorRule>
+            {
+                new()
+                {
+                    Value = "Velo",
+                    Hex = "#00AA00",
+                    Scope = SemanticColorScope.Pages,
+                    PageIds = new List<string> { ColoredPage }
+                }
+            });
+
+            var scoped = new SemanticColorRule
+            {
+                Value = "Velo",
+                Scope = SemanticColorScope.Pages,
+                PageIds = new List<string> { ColoredPage }
+            };
+            var otherPage = new SemanticColorRule
+            {
+                Value = "Velo",
+                Scope = SemanticColorScope.Pages,
+                PageIds = new List<string> { SecondPage }
+            };
+
+            Assert.Equal("#00AA00", service.GetAppliedColor(manager, scoped));
+            Assert.False(string.Equals(
+                service.GetAppliedColor(manager, otherPage), "#00AA00", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {

@@ -3,8 +3,34 @@
     "colorSync": {
       "rules": [
         {
+          "value": "2014",
+          "hex": "#118DFF",
+          "scope": "report"
+        },
+        {
           "value": "2013",
-          "hex": "#2AFF19"
+          "hex": "#2AFF19",
+          "scope": "pages",
+          "pageIds": [
+            "03d23146c353b39f1666",
+            "127464940031610c0bc4",
+            "ddf21251aaa0ebd99de1",
+            "62703fb0a0b7ad3cdbcc",
+            "421308d274e5b5952b47"
+          ]
+        },
+        {
+          "value": "Government",
+          "hex": "#6B007B",
+          "scope": "pages",
+          "pageIds": [
+            "6ce61a33dfeca0131c91"
+          ]
+        },
+        {
+          "value": "Jenish Mangukiya is signed in",
+          "hex": "#1D2B32",
+          "scope": "report"
         }
       ]
     }

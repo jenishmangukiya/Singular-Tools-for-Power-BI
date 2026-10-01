@@ -81,11 +81,21 @@ public class PageVisualInfo
     public int VisualCount => Visuals.Count;
 }
 
+/// <summary>Where a semantic color rule applies.</summary>
+public enum SemanticColorScope
+{
+    /// <summary>Every page in the report.</summary>
+    Report,
+
+    /// <summary>Only the pages listed in <see cref="SemanticColorRule.PageIds"/>.</summary>
+    Pages
+}
+
 /// <summary>
 /// A user-defined semantic color: any legend/category/slice/series string should
-/// be shown in <see cref="Hex"/> across the whole report. Values are matched as
-/// universal strings (case-insensitive, type suffix ignored), independent of the
-/// fields they belong to.
+/// be shown in <see cref="Hex"/> on the pages selected by <see cref="Scope"/>.
+/// Values are matched as universal strings (case-insensitive, type suffix ignored),
+/// independent of the fields they belong to.
 /// </summary>
 public sealed class SemanticColorRule
 {
@@ -94,6 +104,12 @@ public sealed class SemanticColorRule
 
     /// <summary>Target color in "#RRGGBB" form.</summary>
     public string Hex { get; set; } = string.Empty;
+
+    /// <summary>Whether the rule targets the whole report or specific pages.</summary>
+    public SemanticColorScope Scope { get; set; } = SemanticColorScope.Report;
+
+    /// <summary>Page ids the rule targets when <see cref="Scope"/> is <see cref="SemanticColorScope.Pages"/>.</summary>
+    public List<string> PageIds { get; set; } = new();
 }
 
 /// <summary>Result of applying semantic color rules to a report.</summary>

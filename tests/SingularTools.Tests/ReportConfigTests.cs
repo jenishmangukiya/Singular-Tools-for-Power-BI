@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using SingularTools.Core;
 using SingularTools.Core.Models;
 using Xunit;
@@ -115,6 +116,75 @@ public class ReportConfigTests
             var reloaded = ReportConfigStore.Load(reportFolder);
             Assert.DoesNotContain(reloaded.GetColorSyncRules(), r => r.Value == "Old");
             Assert.Contains(reloaded.GetColorSyncRules(), r => r.Value == "New");
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void ColorSyncRules_RoundTripScopeAndPages()
+    {
+        var projectRoot = NewTempRoot("PBIR_ConfigScope_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetColorSyncRules(new[]
+            {
+                new SemanticColorRule { Value = "Yes", Hex = "#00AA00", Scope = SemanticColorScope.Report },
+                new SemanticColorRule
+                {
+                    Value = "Enterprise",
+                    Hex = "#118DFF",
+                    Scope = SemanticColorScope.Pages,
+                    PageIds = new System.Collections.Generic.List<string> { "aaa", "bbb" }
+                }
+            });
+
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            var rules = ReportConfigStore.Load(reportFolder).GetColorSyncRules();
+            Assert.Equal(2, rules.Count);
+
+            var reportRule = rules.Single(r => r.Value == "Yes");
+            Assert.Equal(SemanticColorScope.Report, reportRule.Scope);
+
+            var pageRule = rules.Single(r => r.Value == "Enterprise");
+            Assert.Equal(SemanticColorScope.Pages, pageRule.Scope);
+            Assert.Equal(new[] { "aaa", "bbb" }, pageRule.PageIds);
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void ColorSyncRules_LegacyRuleWithoutScope_DefaultsToReport()
+    {
+        var projectRoot = NewTempRoot("PBIR_ConfigLegacy_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        var configPath = Path.Combine(projectRoot, "singular-tools.json");
+        File.WriteAllText(configPath, """
+        {
+          "schemaVersion": 1,
+          "features": {
+            "colorSync": { "rules": [ { "value": "Velo", "hex": "#123456" } ] }
+          }
+        }
+        """);
+
+        try
+        {
+            var rule = ReportConfigStore.Load(reportFolder).GetColorSyncRules().Single();
+            Assert.Equal(SemanticColorScope.Report, rule.Scope);
+            Assert.Empty(rule.PageIds);
         }
         finally
         {

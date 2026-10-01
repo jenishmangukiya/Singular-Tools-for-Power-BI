@@ -87,10 +87,16 @@ public sealed class SemanticColorService
         var normalized = NormalizeRules(rules);
         if (normalized.Count == 0) return result;
 
+        // Report-wide rules first, then page-scoped rules, so page rules win.
+        var ordered = normalized
+            .OrderBy(r => r.Scope == SemanticColorScope.Pages ? 1 : 0)
+            .ToList();
+
         var columnTypes = LoadColumnTypes(manager.ReportFolderPath);
 
         foreach (var visualPath in EnumerateVisualFiles(pagesDir))
         {
+            var pageId = PageIdOf(pagesDir, visualPath);
             JsonNode? root;
             try
             {
@@ -118,8 +124,10 @@ public sealed class SemanticColorService
 
             var changed = false;
 
-            foreach (var rule in normalized)
+            foreach (var rule in ordered)
             {
+                if (!RuleTargetsPage(rule, pageId)) continue;
+
                 var dataPoints = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
 
                 if (dataPoints != null)
@@ -177,21 +185,27 @@ public sealed class SemanticColorService
     }
 
     /// <summary>
-    /// Returns the color currently applied to a value across the report's non-table
-    /// visuals, or null when no selector references it yet. Used to keep the tool's
-    /// rule list in sync after undo/redo restores a previous report state.
+    /// Returns the color currently applied to a rule's value within its scope (the
+    /// whole report or the selected pages), or null when no selector references it
+    /// yet. Used to keep the tool's rule list in sync after undo/redo.
     /// </summary>
-    public string? GetAppliedColor(ReportManager manager, string value)
+    public string? GetAppliedColor(ReportManager manager, SemanticColorRule rule)
     {
+        if (rule == null) return null;
+
         var pagesDir = manager.PagesDirectoryPath;
         if (string.IsNullOrEmpty(pagesDir) || !Directory.Exists(pagesDir)) return null;
 
-        var normalized = NormalizeRuleValue(value);
+        var normalized = NormalizeRuleValue(rule.Value);
         if (normalized.Length == 0) return null;
+
+        var pageFilter = rule.Scope == SemanticColorScope.Pages
+            ? new HashSet<string>(rule.PageIds ?? new List<string>(), StringComparer.OrdinalIgnoreCase)
+            : null;
 
         var colors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var visualPath in EnumerateVisualFiles(pagesDir))
+        foreach (var visualPath in EnumerateVisualFiles(pagesDir, pageFilter))
         {
             JsonNode? root;
             try
@@ -231,6 +245,20 @@ public sealed class SemanticColorService
             : colors.OrderByDescending(pair => pair.Value).First().Key;
     }
 
+    private static bool RuleTargetsPage(SemanticColorRule rule, string pageId)
+    {
+        if (rule.Scope != SemanticColorScope.Pages) return true;
+        return rule.PageIds != null && rule.PageIds.Contains(pageId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The page id (folder name under definition/pages) for a visual file path.</summary>
+    private static string PageIdOf(string pagesDir, string visualPath)
+    {
+        var relative = Path.GetRelativePath(pagesDir, visualPath);
+        var separator = relative.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+        return separator > 0 ? relative.Substring(0, separator) : relative;
+    }
+
     private static List<SemanticColorRule> NormalizeRules(IReadOnlyList<SemanticColorRule> rules)
     {
         var result = new List<SemanticColorRule>();
@@ -246,17 +274,42 @@ public sealed class SemanticColorService
             var hex = NormalizeHex(rule.Hex);
             if (hex.Length == 0) continue;
 
-            if (seen.TryGetValue(value, out var index))
+            var normalized = BuildNormalizedRule(rule, value, hex);
+            var key = normalized.Scope == SemanticColorScope.Pages
+                ? $"{value}|pages|{string.Join(",", normalized.PageIds)}"
+                : $"{value}|report";
+
+            if (seen.TryGetValue(key, out var index))
             {
-                result[index] = new SemanticColorRule { Value = value, Hex = hex };
+                result[index] = normalized;
                 continue;
             }
 
-            seen[value] = result.Count;
-            result.Add(new SemanticColorRule { Value = value, Hex = hex });
+            seen[key] = result.Count;
+            result.Add(normalized);
         }
 
         return result;
+    }
+
+    private static SemanticColorRule BuildNormalizedRule(SemanticColorRule source, string value, string hex)
+    {
+        var rule = new SemanticColorRule
+        {
+            Value = value,
+            Hex = hex,
+            Scope = source.Scope
+        };
+
+        if (source.Scope == SemanticColorScope.Pages && source.PageIds != null)
+        {
+            rule.PageIds = source.PageIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        return rule;
     }
 
     private static bool SelectorTargetsValue(
@@ -797,10 +850,12 @@ public sealed class SemanticColorService
 
     // -------------------------------------------------------------- Files
 
-    private static IEnumerable<string> EnumerateVisualFiles(string pagesDir)
+    private static IEnumerable<string> EnumerateVisualFiles(string pagesDir, IReadOnlySet<string>? pageIds = null)
     {
         foreach (var pageDir in Directory.EnumerateDirectories(pagesDir))
         {
+            if (pageIds != null && !pageIds.Contains(Path.GetFileName(pageDir))) continue;
+
             var visualsDir = Path.Combine(pageDir, "visuals");
             if (!Directory.Exists(visualsDir)) continue;
 
