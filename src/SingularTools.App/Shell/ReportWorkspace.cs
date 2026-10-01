@@ -102,6 +102,26 @@ public sealed class ReportWorkspace : IDisposable
     public T ApplyEditWithResult<T>(Func<ReportManager, T> edit, bool managerWritesInternally = false, bool syncFirst = true)
         => ApplyEditCore(edit, managerWritesInternally, syncFirst);
 
+    /// <summary>
+    /// Applies an in-memory edit and saves it, but deliberately skips the undo
+    /// history commit. Use for temporary changes that are reverted within the
+    /// same operation (for example swapping page visibility around a publish),
+    /// so they never show up as two noisy undo steps.
+    /// </summary>
+    public void ApplyTransientEdit(Action<ReportManager> edit)
+    {
+        if (SyncIfStale())
+        {
+            ToastService.Show("Report changed in Power BI Desktop — reloaded before applying your change.", ToastSeverity.Informational);
+        }
+
+        edit(Manager);
+        Manager.SaveChanges();
+
+        _signature = ComputeSignature();
+        RaiseChanged();
+    }
+
     private T ApplyEditCore<T>(Func<ReportManager, T> edit, bool managerWritesInternally, bool syncFirst)
     {
         if (syncFirst && SyncIfStale())

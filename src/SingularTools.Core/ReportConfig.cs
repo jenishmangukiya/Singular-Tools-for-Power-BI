@@ -23,6 +23,8 @@ public sealed class ReportConfig
     public const string FileName = "singular-tools.json";
     public const string ColorSyncFeature = "colorSync";
     public const string RulesKey = "rules";
+    public const string PublishingGroupsFeature = "publishGroups";
+    public const string GroupsKey = "groups";
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -144,6 +146,55 @@ public sealed class ReportConfig
         }
 
         return ids;
+    }
+
+    /// <summary>Reads the publishing groups from this config (empty when absent).</summary>
+    public List<PublishingGroup> GetPublishingGroups()
+    {
+        var groups = new List<PublishingGroup>();
+        if (FeatureSection(PublishingGroupsFeature) is not JsonObject section) return groups;
+        if (section[GroupsKey] is not JsonArray array) return groups;
+
+        foreach (var node in array)
+        {
+            if (node is not JsonObject group) continue;
+
+            var name = group["name"]?.ToString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
+            groups.Add(new PublishingGroup
+            {
+                Name = name,
+                VisiblePageIds = ReadPageIds(group["visiblePageIds"] as JsonArray)
+            });
+        }
+
+        return groups;
+    }
+
+    /// <summary>Writes the publishing groups, preserving any other keys in the section.</summary>
+    public void SetPublishingGroups(IEnumerable<PublishingGroup> groups)
+    {
+        var section = FeatureSection(PublishingGroupsFeature) as JsonObject ?? new JsonObject();
+        var array = new JsonArray();
+
+        foreach (var group in groups)
+        {
+            var pageIds = new JsonArray();
+            foreach (var id in group.VisiblePageIds ?? new List<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(id)) pageIds.Add(id);
+            }
+
+            array.Add(new JsonObject
+            {
+                ["name"] = group.Name,
+                ["visiblePageIds"] = pageIds
+            });
+        }
+
+        section[GroupsKey] = array;
+        SetFeatureSection(PublishingGroupsFeature, section);
     }
 
     private int ReadSchemaVersion()

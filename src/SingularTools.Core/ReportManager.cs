@@ -163,7 +163,8 @@ public class ReportManager
                 var displayOption = pNode["displayOption"]?.ToString() ?? "FitToPage";
                 var width = pNode["width"]?.GetValue<double>() ?? 1920;
                 var height = pNode["height"]?.GetValue<double>() ?? 1080;
-                var isHidden = pNode["visibility"]?.ToString()?.Equals("Hidden", StringComparison.OrdinalIgnoreCase) ?? false;
+                var visibility = pNode["visibility"]?.ToString();
+                var isHidden = !string.IsNullOrEmpty(visibility) && visibility.Contains("Hidden", StringComparison.OrdinalIgnoreCase);
 
                 var page = new ReportPage
                 {
@@ -464,6 +465,47 @@ public class ReportManager
         }
     }
 
+    /// <summary>Shows or hides a single page in the report definition.</summary>
+    public void SetPageVisibility(string pageId, bool isHidden)
+    {
+        var target = Pages.FirstOrDefault(p => string.Equals(p.Id, pageId, StringComparison.OrdinalIgnoreCase));
+        if (target == null || target.IsHidden == isHidden) return;
+
+        target.IsHidden = isHidden;
+        UpdatePageDefinition(target);
+    }
+
+    /// <summary>
+    /// Applies visibility to many pages at once. Pass the desired hidden state
+    /// for each page id; ids that are not present are ignored. Used for the
+    /// temporary visibility swap performed around a publish.
+    /// </summary>
+    public void SetPageVisibility(IReadOnlyDictionary<string, bool> hiddenByPageId)
+    {
+        if (hiddenByPageId == null || hiddenByPageId.Count == 0) return;
+
+        foreach (var page in Pages)
+        {
+            if (hiddenByPageId.TryGetValue(page.Id, out var isHidden) && page.IsHidden != isHidden)
+            {
+                page.IsHidden = isHidden;
+                UpdatePageDefinition(page);
+            }
+        }
+    }
+
+    /// <summary>Snapshots the current hidden/shown state of every page.</summary>
+    public Dictionary<string, bool> CaptureVisibility()
+    {
+        var state = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var page in Pages)
+        {
+            state[page.Id] = page.IsHidden;
+        }
+
+        return state;
+    }
+
     private void UpdatePageDefinition(ReportPage page)
     {
         if (string.IsNullOrEmpty(page.PageJsonPath) || !File.Exists(page.PageJsonPath)) return;
@@ -477,7 +519,9 @@ public class ReportManager
             node["displayName"] = page.DisplayName;
             if (page.IsHidden)
             {
-                node["visibility"] = "Hidden";
+                // Power BI's PBIR schema expects "HiddenInViewMode" for a page hidden
+                // in view mode; plain "Hidden" is invalid and breaks the report.
+                node["visibility"] = "HiddenInViewMode";
             }
             else if (node["visibility"] != null)
             {

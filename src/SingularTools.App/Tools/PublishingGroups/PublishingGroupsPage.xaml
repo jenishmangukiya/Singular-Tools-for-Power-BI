@@ -1,0 +1,444 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="SingularTools_App.Tools.PublishingGroups.PublishingGroupsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:SingularTools_App.Tools.PublishingGroups"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="Transparent" Padding="{StaticResource ToolPagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Row 0 · Report banner  -->
+        <Border Margin="0,0,0,10" Padding="16,12" Style="{StaticResource CardBorderStyle}">
+            <Grid ColumnSpacing="{StaticResource SpaceL}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    Width="36"
+                    Height="36"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    CornerRadius="{StaticResource RadiusMedium}">
+                    <FontIcon
+                        x:Name="ReportStatusGlyph"
+                        FontSize="18"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE7BA;" />
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{StaticResource SpaceXXS}">
+                    <TextBlock x:Name="ReportNameText" Style="{StaticResource RowTitleTextStyle}" Text="No report loaded" />
+                    <TextBlock
+                        x:Name="ReportHintText"
+                        Style="{StaticResource RowSubtitleTextStyle}"
+                        Text="Open a report to set up which pages each workspace will see."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Row 1 · Groups + editor  -->
+        <Grid Grid.Row="1" ColumnSpacing="{StaticResource SpaceL}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!--  Left · Groups  -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="14,10,14,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Groups" />
+                        <Button
+                            x:Name="NewGroupButton"
+                            Grid.Column="1"
+                            Click="NewGroupButton_Click"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Create a new set of pages to publish">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                <FontIcon FontSize="14" Glyph="&#xE710;" />
+                                <TextBlock Text="New group" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <ListView
+                        x:Name="GroupsListView"
+                        Grid.Row="1"
+                        Padding="6,2,6,6"
+                        IsItemClickEnabled="False"
+                        SelectionChanged="GroupsListView_SelectionChanged"
+                        SelectionMode="Single">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:GroupViewModel">
+                                <Grid
+                                    Margin="0,1"
+                                    Padding="10,7"
+                                    ColumnSpacing="{StaticResource SpaceM}"
+                                    CornerRadius="{StaticResource RadiusMedium}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Click="GroupRename_Click" Text="Rename">
+                                                <MenuFlyoutItem.Icon>
+                                                    <FontIcon Glyph="&#xE8AC;" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="GroupDuplicate_Click" Text="Duplicate">
+                                                <MenuFlyoutItem.Icon>
+                                                    <FontIcon Glyph="&#xE8C8;" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem Click="GroupDelete_Click" Text="Delete">
+                                                <MenuFlyoutItem.Icon>
+                                                    <FontIcon Foreground="{ThemeResource SystemFillColorCriticalBrush}" Glyph="&#xE74D;" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                        </MenuFlyout>
+                                    </Grid.ContextFlyout>
+
+                                    <Border
+                                        Width="30"
+                                        Height="30"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                        CornerRadius="{StaticResource RadiusSmall}">
+                                        <FontIcon FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE8FD;" />
+                                    </Border>
+
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Spacing="{StaticResource SpaceXXS}">
+                                        <TextBlock Style="{StaticResource RowTitleTextStyle}" Text="{x:Bind Name, Mode=OneWay}" />
+                                        <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="{x:Bind Summary, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <StackPanel
+                        x:Name="NoGroupsPanel"
+                        Grid.Row="1"
+                        MaxWidth="240"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="{StaticResource SpaceM}"
+                        Visibility="Collapsed">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            FontSize="32"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE8FD;" />
+                        <TextBlock
+                            x:Name="NoGroupsText"
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="No groups yet. Create one to choose which pages a workspace will see."
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!--  Right · Page visibility editor  -->
+            <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <!--  Editor  -->
+                    <Grid x:Name="EditorPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Margin="16,14,16,8" Spacing="{StaticResource SpaceXXS}">
+                            <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Group name" />
+                            <TextBox
+                                x:Name="GroupNameBox"
+                                MaxWidth="380"
+                                HorizontalAlignment="Left"
+                                PlaceholderText="e.g. Client A – External"
+                                TextChanged="GroupNameBox_TextChanged" />
+                        </StackPanel>
+
+                        <Grid Grid.Row="1" Margin="16,0,16,8" ColumnSpacing="{StaticResource SpaceS}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button
+                                x:Name="ShowAllButton"
+                                Click="ShowAllButton_Click"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Show every page in this group">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                    <FontIcon FontSize="14" Glyph="&#xE73E;" />
+                                    <TextBlock Text="Show all" />
+                                </StackPanel>
+                            </Button>
+
+                            <Button
+                                x:Name="HideAllButton"
+                                Grid.Column="1"
+                                Click="HideAllButton_Click"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Hide every page in this group">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                    <FontIcon FontSize="14" Glyph="&#xED1A;" />
+                                    <TextBlock Text="Hide all" />
+                                </StackPanel>
+                            </Button>
+
+                            <TextBlock
+                                x:Name="VisibilitySummaryText"
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource MutedCaptionTextStyle}" />
+
+                            <Button
+                                x:Name="CancelButton"
+                                Grid.Column="3"
+                                Click="CancelButton_Click"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                    <FontIcon FontSize="14" Glyph="&#xE711;" />
+                                    <TextBlock Text="Cancel" />
+                                </StackPanel>
+                            </Button>
+
+                            <Button
+                                x:Name="PublishButton"
+                                Grid.Column="4"
+                                Click="PublishButton_Click"
+                                Style="{StaticResource AccentButtonStyle}"
+                                ToolTipService.ToolTip="Publish this group to the workspaces you choose">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                    <FontIcon FontSize="14" Glyph="&#xE724;" />
+                                    <TextBlock Text="Publish this group" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <Grid Grid.Row="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Margin="20,0,20,2" Padding="0,0,4,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Pages" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Style="{StaticResource MutedCaptionTextStyle}"
+                                    Text="Show this page" />
+                            </Grid>
+
+                            <ListView
+                                x:Name="PagesListView"
+                                Grid.Row="1"
+                                Padding="14,0,14,10"
+                                IsItemClickEnabled="False"
+                                SelectionMode="None">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:GroupPageViewModel">
+                                        <Grid
+                                            Margin="0,1"
+                                            Padding="8,4"
+                                            ColumnSpacing="{StaticResource SpaceM}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock
+                                                Grid.Column="0"
+                                                Width="26"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                Style="{StaticResource MutedCaptionTextStyle}"
+                                                Text="{x:Bind OrderIndexText}" />
+
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource RowTitleTextStyle}"
+                                                Text="{x:Bind DisplayName}" />
+
+                                            <Border
+                                                Grid.Column="2"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource BadgePillStyle}"
+                                                Visibility="{x:Bind HiddenInReportVisibility, Mode=OneWay}">
+                                                <TextBlock
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Style="{StaticResource BadgeTextStyle}"
+                                                    Text="Hidden in report" />
+                                            </Border>
+
+                                            <ToggleSwitch
+                                                Grid.Column="3"
+                                                MinWidth="0"
+                                                IsOn="{x:Bind IsVisible, Mode=OneWay}"
+                                                OffContent=""
+                                                OnContent=""
+                                                Toggled="PageVisibility_Toggled" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+
+                            <StackPanel
+                                x:Name="NoPagesPanel"
+                                Grid.Row="1"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="{StaticResource SpaceM}"
+                                Visibility="Collapsed">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    FontSize="32"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Glyph="&#xE7BA;" />
+                                <TextBlock
+                                    Style="{StaticResource MutedCaptionTextStyle}"
+                                    Text="This report has no pages to choose from."
+                                    TextAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+
+                    <!--  Empty · no group selected  -->
+                    <StackPanel
+                        x:Name="NoGroupPanel"
+                        MaxWidth="360"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="{StaticResource SpaceM}">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            FontSize="40"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE8FD;" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource ToolTitleTextStyle}"
+                            Text="Create a publishing group" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="A group is a set of pages to keep visible when you publish. Switch a page off to hide it for that group only."
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!--  Empty · no report  -->
+                    <StackPanel
+                        x:Name="NoReportPanel"
+                        MaxWidth="380"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="{StaticResource SpaceM}"
+                        Visibility="Collapsed">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            FontSize="40"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE7BA;" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource ToolTitleTextStyle}"
+                            Text="No report open" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="Open a report from Home to set up publishing groups."
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                        <Button
+                            HorizontalAlignment="Center"
+                            Margin="0,4,0,0"
+                            Click="GoToHome_Click"
+                            Style="{StaticResource ToolbarButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                <FontIcon FontSize="14" Glyph="&#xE80F;" />
+                                <TextBlock Text="Go to Home" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!--  Row 2 · Footer  -->
+        <Grid Grid.Row="2" Margin="4,10,4,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="GroupCountText"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="No groups" />
+
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="Hidden pages leave the page list — they are not access-controlled"
+                ToolTipService.ToolTip="Hiding a page removes it from the published report's page list. Anyone who knows the page URL can still open it." />
+        </Grid>
+    </Grid>
+</Page>

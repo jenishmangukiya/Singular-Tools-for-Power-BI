@@ -225,4 +225,102 @@ public class ReportConfigTests
             if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
         }
     }
+
+    [Fact]
+    public void PublishingGroups_RoundTrip()
+    {
+        var projectRoot = NewTempRoot("PBIR_GroupsRound_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetPublishingGroups(new[]
+            {
+                new PublishingGroup { Name = "Client A", VisiblePageIds = new List<string> { "aaa", "bbb" } },
+                new PublishingGroup { Name = "Public", VisiblePageIds = new List<string> { "aaa" } }
+            });
+
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            var groups = ReportConfigStore.Load(reportFolder).GetPublishingGroups();
+            Assert.Equal(2, groups.Count);
+            Assert.Equal(new[] { "aaa", "bbb" }, groups.Single(g => g.Name == "Client A").VisiblePageIds);
+            Assert.Equal(new[] { "aaa" }, groups.Single(g => g.Name == "Public").VisiblePageIds);
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void PublishingGroups_CoexistWithColorSync()
+    {
+        var projectRoot = NewTempRoot("PBIR_GroupsCoexist_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetColorSyncRules(new[] { new SemanticColorRule { Value = "Yes", Hex = "#00AA00" } });
+            config.SetPublishingGroups(new[]
+            {
+                new PublishingGroup { Name = "Team", VisiblePageIds = new List<string> { "p1" } }
+            });
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            // Writing one feature must not drop the other.
+            var reloaded = ReportConfigStore.Load(reportFolder);
+            Assert.Single(reloaded.GetColorSyncRules());
+            Assert.Single(reloaded.GetPublishingGroups());
+
+            reloaded.SetPublishingGroups(Array.Empty<PublishingGroup>());
+            Assert.True(ReportConfigStore.Save(reportFolder, reloaded));
+
+            var final = ReportConfigStore.Load(reportFolder);
+            Assert.Empty(final.GetPublishingGroups());
+            Assert.Single(final.GetColorSyncRules());
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void PublishingGroups_SkipsEntriesWithoutName()
+    {
+        var projectRoot = NewTempRoot("PBIR_GroupsNoName_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        var configPath = Path.Combine(projectRoot, "singular-tools.json");
+        File.WriteAllText(configPath, """
+        {
+          "schemaVersion": 1,
+          "features": {
+            "publishGroups": {
+              "groups": [
+                { "name": "", "visiblePageIds": [ "a" ] },
+                { "name": "Valid", "visiblePageIds": [ "b" ] }
+              ]
+            }
+          }
+        }
+        """);
+
+        try
+        {
+            var groups = ReportConfigStore.Load(reportFolder).GetPublishingGroups();
+            Assert.Single(groups);
+            Assert.Equal("Valid", groups[0].Name);
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
 }

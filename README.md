@@ -1,6 +1,6 @@
 # Singular Tools for Power BI ⚡
 
-**Singular Tools** is a modern **toolbox** for Power BI Desktop authors built with **WinUI 3 (Windows App SDK)** and **.NET 10**. It opens on a Home launcher and hosts a growing set of tools — starting with the Report Pages Manager.
+**Singular Tools** is a modern **toolbox** for Power BI Desktop authors built with **WinUI 3 (Windows App SDK)** and **.NET 10**. It opens on a Home launcher and hosts a growing set of tools — starting with the Pages Manager.
 
 ---
 
@@ -37,6 +37,13 @@
   - Direct read/write to Power BI Enhanced Report format (`definition/pages/pages.json` & `page.json`).
   - Atomic file writes with immediate reload support in Power BI Desktop.
 
+- **📤 Publishing Groups**:
+  - Save a named page recipe per audience, e.g. *Client A – External*, and choose which pages stay visible for it.
+  - Publish the group to any workspace: pick a destination from the detected list, or type one by hand.
+  - Page visibility is applied just for the publish and restored afterwards, so the report you are editing never changes.
+  - Groups travel with the report, stored in `singular-tools.json` alongside your color-sync rules.
+  - Note: hiding a page removes it from the page list — it is **not** access control.
+
 - **🎨 Modern Windows 11 Fluent UI**:
   - Built with **WinUI 3** and Windows App SDK.
   - Native **Mica Backdrop**, dark & light theme auto-detection, rounded corners, and fluid typography.
@@ -50,16 +57,16 @@
 
 | Shortcut | Action | Scope |
 | :--- | :--- | :--- |
-| `Up` / `Down` | Navigate through page list | Report Pages Manager |
-| `Enter` | Set active page | Report Pages Manager |
-| `F2` | Rename selected page | Report Pages Manager |
-| `Alt + Up` / `Alt + Down` | Move selected page up / down | Report Pages Manager |
-| `Ctrl + Shift + Up` | Move page to top (first tab) | Report Pages Manager |
-| `Ctrl + Shift + Down` | Move page to bottom (last tab) | Report Pages Manager |
-| `Ctrl + Z` / `Ctrl + Y` | Undo / redo | Report Pages Manager |
-| `Ctrl + D` | Duplicate selected page | Report Pages Manager |
-| `Delete` | Delete selected page | Report Pages Manager |
-| `Esc` | Clear search | Report Pages Manager |
+| `Up` / `Down` | Navigate through page list | Pages Manager |
+| `Enter` | Set active page | Pages Manager |
+| `F2` | Rename selected page | Pages Manager |
+| `Alt + Up` / `Alt + Down` | Move selected page up / down | Pages Manager |
+| `Ctrl + Shift + Up` | Move page to top (first tab) | Pages Manager |
+| `Ctrl + Shift + Down` | Move page to bottom (last tab) | Pages Manager |
+| `Ctrl + Z` / `Ctrl + Y` | Undo / redo | Pages Manager |
+| `Ctrl + D` | Duplicate selected page | Pages Manager |
+| `Delete` | Delete selected page | Pages Manager |
+| `Esc` | Clear search | Pages Manager |
 
 
 ---
@@ -83,7 +90,9 @@
 │       ├── Styles/Tokens.xaml           # Shared spacing/typography/surface resources
 │       └── Tools/                       # One folder per tool
 │           ├── Home/HomePage.xaml (.cs) # Home launcher
-│           └── ReportPagesManager/ReportPagesManagerPage.xaml (.cs)
+│           ├── ReportPagesManager/ReportPagesManagerPage.xaml (.cs)
+│           ├── PublishingGroups/PublishingGroupsPage.xaml (.cs)  # Per-workspace page recipes
+│           └── SemanticColorManager/SemanticColorManagerPage.xaml (.cs)
 └── tests/
     └── SingularTools.Tests/             # Unit tests verifying PBIP reading, sorting, history
         └── ReportManagerTests.cs

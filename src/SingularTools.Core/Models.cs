@@ -112,6 +112,22 @@ public sealed class SemanticColorRule
     public List<string> PageIds { get; set; } = new();
 }
 
+/// <summary>
+/// A named page recipe for publishing. It records which report pages stay
+/// visible when the report is published with this choice; every other page is
+/// hidden in the published copy. Target workspaces are chosen at publish time
+/// and are deliberately not stored here, so the same recipe can go to any
+/// workspace.
+/// </summary>
+public sealed class PublishingGroup
+{
+    /// <summary>Friendly name the author gives the recipe, e.g. "Client A – External".</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Ids of the pages that stay visible when this group is published.</summary>
+    public List<string> VisiblePageIds { get; set; } = new();
+}
+
 /// <summary>Result of applying semantic color rules to a report.</summary>
 public sealed class SemanticColorApplyResult
 {

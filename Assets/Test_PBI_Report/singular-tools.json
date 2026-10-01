@@ -33,6 +33,17 @@
           "scope": "report"
         }
       ]
+    },
+    "publishGroups": {
+      "groups": [
+        {
+          "name": "Group 1",
+          "visiblePageIds": [
+            "6ce61a33dfeca0131c91",
+            "03d23146c353b39f1666"
+          ]
+        }
+      ]
     }
   },
   "schemaVersion": 1,

@@ -12,17 +12,28 @@ public class ReportManagerTests
 {
     private string GetDemoReportPath()
     {
-        // Navigate up from bin to root workspace
-        var current = Directory.GetCurrentDirectory();
-        while (current != null && !File.Exists(Path.Combine(current, "Demo PBI Report.pbip")))
+        var candidates = new[]
         {
+            string.Empty,
+            Path.Combine("Assets", "Test_PBI_Report")
+        };
+
+        var current = Directory.GetCurrentDirectory();
+        while (current != null)
+        {
+            foreach (var relative in candidates)
+            {
+                var root = Path.Combine(current, relative);
+                if (File.Exists(Path.Combine(root, "Demo PBI Report.pbip")))
+                {
+                    return Path.Combine(root, "Demo PBI Report.Report");
+                }
+            }
+
             current = Directory.GetParent(current)?.FullName;
         }
 
-        if (current == null)
-            throw new DirectoryNotFoundException("Could not locate Demo PBI Report.pbip");
-
-        return Path.Combine(current, "Demo PBI Report.Report");
+        throw new DirectoryNotFoundException("Could not locate Demo PBI Report.pbip");
     }
 
     [Fact]
@@ -433,6 +444,86 @@ public class ReportManagerTests
             // ...and the correction is persisted, never the invalid value.
             var saved = JsonNode.Parse(File.ReadAllText(pagesJsonPath))!;
             Assert.Equal(firstPageId, saved["activePageName"]!.GetValue<string>());
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void TogglePageVisibility_ShouldWriteHiddenInViewMode()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_Vis_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+
+            var pageId = manager.Pages[0].Id;
+            manager.TogglePageVisibility(pageId);
+            manager.SaveChanges();
+
+            var pageJsonPath = manager.Pages.First(p => p.Id == pageId).PageJsonPath;
+            var node = JsonNode.Parse(File.ReadAllText(pageJsonPath))!;
+
+            // PBIR expects "HiddenInViewMode"; the invalid "Hidden" value must never be written.
+            Assert.Equal("HiddenInViewMode", node["visibility"]!.GetValue<string>());
+
+            var reloaded = new ReportManager();
+            reloaded.LoadReport(tempDir);
+            Assert.True(reloaded.Pages.First(p => p.Id == pageId).IsHidden);
+
+            // Un-hiding removes the property entirely.
+            reloaded.TogglePageVisibility(pageId);
+            reloaded.SaveChanges();
+
+            var cleared = JsonNode.Parse(File.ReadAllText(pageJsonPath))!;
+            Assert.Null(cleared["visibility"]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void SetPageVisibility_AndCapture_ShouldSwapAndRestore()
+    {
+        var reportPath = GetDemoReportPath();
+        var tempDir = Path.Combine(Path.GetTempPath(), "PBIR_VisBatch_" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(reportPath, tempDir);
+
+        try
+        {
+            var manager = new ReportManager();
+            manager.LoadReport(tempDir);
+
+            // Snapshot the report's own visibility, then hide every page.
+            var original = manager.CaptureVisibility();
+            Assert.Equal(manager.Pages.Count, original.Count);
+
+            manager.SetPageVisibility(manager.Pages.ToDictionary(p => p.Id, _ => true));
+            manager.SaveChanges();
+
+            var hidden = new ReportManager();
+            hidden.LoadReport(tempDir);
+            Assert.All(hidden.Pages, p => Assert.True(p.IsHidden));
+
+            // Restoring the snapshot must put the report back exactly as it was.
+            manager.SetPageVisibility(original);
+            manager.SaveChanges();
+
+            var restored = new ReportManager();
+            restored.LoadReport(tempDir);
+            Assert.Equal(manager.Pages.Count, restored.Pages.Count);
+            foreach (var page in restored.Pages)
+            {
+                Assert.Equal(original[page.Id], page.IsHidden);
+            }
         }
         finally
         {

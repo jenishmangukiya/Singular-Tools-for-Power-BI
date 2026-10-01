@@ -19,7 +19,7 @@ public static class ToolRegistry
             pageType: typeof(Tools.Home.HomePage)),
         new(
             id: "report-pages-manager",
-            title: "Page Manager",
+            title: "Pages Manager",
             description: "Search, reorder, rename and organize report pages",
             glyph: "\uE8A9", // Page
             pageType: typeof(Tools.ReportPagesManager.ReportPagesManagerPage)),
@@ -34,6 +34,12 @@ public static class ToolRegistry
             title: "Color Sync",
             description: "Keep matching values (e.g. Yes / No) the same color across every visual",
             glyph: "\uE790", // Color
-            pageType: typeof(Tools.SemanticColorManager.SemanticColorManagerPage))
+            pageType: typeof(Tools.SemanticColorManager.SemanticColorManagerPage)),
+        new(
+            id: "publishing-groups",
+            title: "Publishing Groups",
+            description: "Choose which pages each workspace sees when you publish",
+            glyph: "\uE724", // Send
+            pageType: typeof(Tools.PublishingGroups.PublishingGroupsPage))
     };
 }
