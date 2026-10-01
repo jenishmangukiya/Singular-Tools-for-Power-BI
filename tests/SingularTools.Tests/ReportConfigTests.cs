@@ -323,4 +323,107 @@ public class ReportConfigTests
             if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
         }
     }
+
+    [Fact]
+    public void PublishWorkspaces_RoundTrip()
+    {
+        var projectRoot = NewTempRoot("PBIR_MultiRound_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetPublishWorkspaces(new[] { "My workspace", "Client A WS" });
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            var workspaces = ReportConfigStore.Load(reportFolder).GetPublishWorkspaces();
+            Assert.Equal(new[] { "My workspace", "Client A WS" }, workspaces);
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void PublishWorkspaces_MissingSection_LoadsEmpty()
+    {
+        var projectRoot = NewTempRoot("PBIR_MultiMissing_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetColorSyncRules(new[] { new SemanticColorRule { Value = "Yes", Hex = "#00AA00" } });
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            Assert.Empty(ReportConfigStore.Load(reportFolder).GetPublishWorkspaces());
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void PublishWorkspaces_DropsBlankNames()
+    {
+        var projectRoot = NewTempRoot("PBIR_MultiBlanks_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetPublishWorkspaces(new[] { "Keep", "  ", "", " Also keep " });
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            var workspaces = ReportConfigStore.Load(reportFolder).GetPublishWorkspaces();
+            Assert.Equal(new[] { "Keep", " Also keep " }, workspaces);
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
+
+    [Fact]
+    public void PublishWorkspaces_CoexistWithPublishingGroupsAndColorSync()
+    {
+        var projectRoot = NewTempRoot("PBIR_MultiCoexist_");
+        var reportFolder = Path.Combine(projectRoot, "Demo.Report");
+        Directory.CreateDirectory(reportFolder);
+
+        try
+        {
+            var config = ReportConfig.Empty();
+            config.SetColorSyncRules(new[] { new SemanticColorRule { Value = "Yes", Hex = "#00AA00" } });
+            config.SetPublishingGroups(new[]
+            {
+                new PublishingGroup { Name = "Team", VisiblePageIds = new List<string> { "p1" } }
+            });
+            config.SetPublishWorkspaces(new[] { "My workspace" });
+            Assert.True(ReportConfigStore.Save(reportFolder, config));
+
+            // Writing the multi-workspace selection must not drop the other sections.
+            var reloaded = ReportConfigStore.Load(reportFolder);
+            Assert.Single(reloaded.GetColorSyncRules());
+            Assert.Single(reloaded.GetPublishingGroups());
+            Assert.Equal(new[] { "My workspace" }, reloaded.GetPublishWorkspaces());
+
+            reloaded.SetPublishWorkspaces(Array.Empty<string>());
+            Assert.True(ReportConfigStore.Save(reportFolder, reloaded));
+
+            var final = ReportConfigStore.Load(reportFolder);
+            Assert.Empty(final.GetPublishWorkspaces());
+            Assert.Single(final.GetColorSyncRules());
+            Assert.Single(final.GetPublishingGroups());
+        }
+        finally
+        {
+            if (Directory.Exists(projectRoot)) Directory.Delete(projectRoot, true);
+        }
+    }
 }

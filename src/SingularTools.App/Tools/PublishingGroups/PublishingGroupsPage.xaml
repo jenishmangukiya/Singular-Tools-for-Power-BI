@@ -251,8 +251,17 @@
                                 Style="{StaticResource AccentButtonStyle}"
                                 ToolTipService.ToolTip="Publish this group to the workspaces you choose">
                                 <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
-                                    <FontIcon FontSize="14" Glyph="&#xE724;" />
-                                    <TextBlock Text="Publish this group" />
+                                    <FontIcon
+                                        x:Name="PublishButtonIcon"
+                                        FontSize="14"
+                                        Glyph="&#xE724;" />
+                                    <ProgressRing
+                                        x:Name="PublishButtonProgress"
+                                        Width="14"
+                                        Height="14"
+                                        IsActive="False"
+                                        Visibility="Collapsed" />
+                                    <TextBlock x:Name="PublishButtonText" Text="Publish this group" />
                                 </StackPanel>
                             </Button>
                         </Grid>

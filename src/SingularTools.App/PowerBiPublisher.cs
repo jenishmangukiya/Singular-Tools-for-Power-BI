@@ -13,8 +13,36 @@ public sealed class PublishResult
     public bool Success { get; init; }
     public string? Error { get; init; }
 
+    /// <summary>Non-fatal note to surface to the author even when publishing worked.</summary>
+    public string? Warning { get; init; }
+
     public static PublishResult Ok() => new() { Success = true };
+
+    public static PublishResult Ok(string warning) => new() { Success = true, Warning = warning };
+
     public static PublishResult Fail(string error) => new() { Success = false, Error = error };
+}
+
+/// <summary>Stages of a multi-workspace publish, reported so a UI can show progress.</summary>
+public enum PublishStage
+{
+    /// <summary>Writing the group's page visibility to the report.</summary>
+    PreparingPages,
+
+    /// <summary>Telling Power BI Desktop to apply the external change (step 0).</summary>
+    WaitingForPowerBi,
+
+    /// <summary>Running the publish dialog for a workspace.</summary>
+    Publishing,
+
+    /// <summary>Waiting for the publish itself to finish.</summary>
+    WaitingForPublish,
+
+    /// <summary>Putting the author's own page visibility back.</summary>
+    RestoringPages,
+
+    /// <summary>Final step: clearing the external-changes banner in Desktop.</summary>
+    ApplyingExternalChanges
 }
 
 /// <summary>
@@ -33,10 +61,23 @@ internal static class PowerBiPublisher
     private const int DialogWaitMs = 20000;
     private const int PublishTimeoutMs = 180000;
 
+    /// <summary>How long the mid-publish flush waits for a banner that should already be up.</summary>
+    private const int ExternalChangeFlushMs = 15000;
+
+    /// <summary>
+    /// How long the final flush waits for a banner Desktop has not raised yet.
+    /// Desktop debounces the external-change notice and only raises it once the
+    /// publish dialog has finished closing, so this is deliberately generous.
+    /// </summary>
+    private const int ExternalChangeFinalWaitMs = 30000;
+
     private static readonly string[] WorkspaceButtonLabels =
     {
         "Close Dialog", "Select", "Cancel", "Got it", "Done", "Replace", "Save", "Don't Save", "Don't save", "No", "Yes"
     };
+
+    /// <summary>Exact label of the button on the "files changed externally" banner.</summary>
+    private static readonly string[] ApplyExternalChangeLabels = { "Apply external changes" };
 
     // ---- Public API -------------------------------------------------------
 
@@ -85,7 +126,11 @@ internal static class PowerBiPublisher
     /// Publishes the open report to a single workspace, handling the optional
     /// "Save changes?" and "Replace this report?" prompts automatically.
     /// </summary>
-    public static PublishResult PublishToWorkspace(string workspaceName, CancellationToken token = default)
+    /// <param name="progress">Optional callback reporting each stage. Invoked from a background thread.</param>
+    public static PublishResult PublishToWorkspace(
+        string workspaceName,
+        CancellationToken token = default,
+        IProgress<PublishStage>? progress = null)
     {
         if (string.IsNullOrWhiteSpace(workspaceName))
         {
@@ -103,6 +148,7 @@ internal static class PowerBiPublisher
         {
             token.ThrowIfCancellationRequested();
 
+            progress?.Report(PublishStage.Publishing);
             dialog = OpenPublishDialog(process, mainWindow);
             token.ThrowIfCancellationRequested();
 
@@ -119,6 +165,8 @@ internal static class PowerBiPublisher
             }
 
             App.Log($"Publish submitted for workspace '{workspaceName}'.");
+
+            progress?.Report(PublishStage.WaitingForPublish);
             return WaitForPublishOutcome(process, mainWindow, token);
         }
         catch (OperationCanceledException)
@@ -131,6 +179,348 @@ internal static class PowerBiPublisher
             DismissDialog(process, mainWindow);
             return PublishResult.Fail(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Runs a full multi-workspace publish for a temporary page-visibility setup.
+    ///
+    /// It swaps visibility, tells Power BI Desktop to apply the external change
+    /// (otherwise Desktop still shows the previous page set and would publish
+    /// the wrong one), publishes to every workspace, then always restores the
+    /// original visibility and clears the banner that the restore itself raises —
+    /// which is the final step, so Desktop is left showing the report exactly as
+    /// the author had it.
+    ///
+    /// The swap is applied through <paramref name="applyVisibility"/> and the
+    /// snapshot is taken with <paramref name="captureVisibility"/>, so the caller
+    /// stays responsible for how the report is written.
+    /// </summary>
+    /// <param name="progress">
+    /// Optional callback reporting each stage, so a caller can show progress.
+    /// Invoked from a background thread.
+    /// </param>
+    public static PublishResult PublishToWorkspaces(
+        IReadOnlyList<string> workspaceNames,
+        IReadOnlyDictionary<string, bool> hiddenByPageId,
+        Func<Dictionary<string, bool>> captureVisibility,
+        Action<IReadOnlyDictionary<string, bool>> applyVisibility,
+        IProgress<PublishStage>? progress = null,
+        CancellationToken token = default)
+    {
+        if (workspaceNames == null || workspaceNames.Count == 0)
+        {
+            return PublishResult.Fail("No workspaces were selected.");
+        }
+
+        var process = FindPowerBiProcess();
+        var mainWindow = process == null ? null : FindMainWindow(process);
+
+        // Remember the report's own visibility before touching it.
+        var originalVisibility = captureVisibility();
+
+        int succeeded = 0;
+        var failures = new List<string>();
+        string? restoreWarning = null;
+
+        try
+        {
+            progress?.Report(PublishStage.PreparingPages);
+            applyVisibility(hiddenByPageId);
+
+            // Step 0: make Desktop pick the swapped visibility up before publishing.
+            if (process != null && mainWindow != null)
+            {
+                progress?.Report(PublishStage.WaitingForPowerBi);
+                FlushExternalChanges(process, mainWindow, token);
+            }
+
+            for (int i = 0; i < workspaceNames.Count; i++)
+            {
+                token.ThrowIfCancellationRequested();
+
+                progress?.Report(PublishStage.Publishing);
+                var result = PublishToWorkspace(workspaceNames[i], token, progress);
+                if (result.Success)
+                {
+                    succeeded++;
+                }
+                else
+                {
+                    failures.Add($"{workspaceNames[i]}: {result.Error ?? "Publish failed."}");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            failures.Add("Cancelled.");
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Multi-workspace publish failed: {ex}");
+            failures.Add(ex.Message);
+        }
+        finally
+        {
+            // Always restore the report's own visibility, even after a failure.
+            try
+            {
+                progress?.Report(PublishStage.RestoringPages);
+                applyVisibility(originalVisibility);
+
+                // The restore is itself an external change; this is the final step,
+                // clearing that banner too so Desktop is left with the report the
+                // author started from rather than a stale notice. Desktop raises the
+                // banner a few seconds after the files change, so wait for it.
+                if (process != null && mainWindow != null)
+                {
+                    progress?.Report(PublishStage.ApplyingExternalChanges);
+                    FlushExternalChanges(process, mainWindow, CancellationToken.None, waitForBanner: true);
+                    App.Log("Final external-changes flush completed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"Restoring page visibility failed: {ex}");
+                restoreWarning = "Could not restore page visibility — check the report in Power BI Desktop.";
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            return PublishResult.Fail(string.Join(" | ", failures));
+        }
+
+        return restoreWarning == null
+            ? PublishResult.Ok()
+            : PublishResult.Ok(restoreWarning);
+    }
+
+    /// <summary>
+    /// Number of workspaces reported as failed in a combined result. Failures are
+    /// joined as "workspace: reason", so a colon marks one failed workspace.
+    /// </summary>
+    internal static int CountFailedWorkspaces(PublishResult result)
+    {
+        if (result.Success || string.IsNullOrEmpty(result.Error)) return 0;
+
+        return result.Error
+            .Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .Count(part => part.Contains(':'));
+    }
+
+    /// <summary>
+    /// Clears Power BI Desktop's "this project's files were changed externally"
+    /// banner so Desktop reloads what we wrote. Clicks the banner's button and
+    /// then confirms the "Overwrite your unsaved edits" prompt, retrying while the
+    /// banner is still present. Never throws: a banner that cannot be cleared is
+    /// logged, not fatal, so publishing can still be attempted.
+    ///
+    /// Detection is anchored on the banner BUTTON, not its text. Desktop keeps
+    /// several permanently-present copies of the banner copy inside
+    /// 'cdk-visually-hidden' live-announcer nodes for screen readers, so text
+    /// matching reports a banner that is not actually on screen.
+    /// </summary>
+    /// <param name="waitForBanner">
+    /// True when the banner is expected to arrive shortly rather than already be
+    /// on screen. Desktop raises it a few seconds after the files change — and
+    /// only once the publish dialog has finished closing — so the final flush has
+    /// to wait for it. The mid-publish flush must not, or it would block every
+    /// publish on a report whose visibility did not actually change.
+    /// </param>
+    public static void FlushExternalChanges(
+        Process process,
+        AutomationElement mainWindow,
+        CancellationToken token = default,
+        bool waitForBanner = false)
+    {
+        var sw = Stopwatch.StartNew();
+        bool clicked = false;
+        int clicks = 0;
+        int budgetMs = waitForBanner ? ExternalChangeFinalWaitMs : ExternalChangeFlushMs;
+
+        while (sw.ElapsedMilliseconds < budgetMs)
+        {
+            if (token.IsCancellationRequested) return;
+
+            // Check the real banner first: if it is gone, we are done, and this
+            // must not be confused by the always-present screen-reader copies.
+            if (FindVisibleApplyButton(mainWindow) == null)
+            {
+                bool stillReturning = ConfirmOverwritePrompt(process, mainWindow);
+                if (stillReturning)
+                {
+                    clicked = true;
+                    clicks++;
+                    Thread.Sleep(400);
+                    continue;
+                }
+
+                if (clicked)
+                {
+                    // A click landed and the banner has not come back: we are done.
+                    App.Log($"External-changes banner cleared after {clicks} click(s).");
+                    return;
+                }
+
+                if (!waitForBanner)
+                {
+                    App.Log("No external-changes banner present.");
+                    return;
+                }
+
+                // Waiting mode: Desktop has not raised the banner yet. Keep
+                // polling until it appears or the budget runs out.
+                Thread.Sleep(250);
+                continue;
+            }
+
+            // The "Overwrite your unsaved edits" prompt is the reliable signal
+            // that the banner will not clear by itself. Confirm it first.
+            if (ConfirmOverwritePrompt(process, mainWindow))
+            {
+                App.Log("Confirmed 'Overwrite your unsaved edits' for external changes.");
+                clicked = true;
+                clicks++;
+                Thread.Sleep(400);
+                continue;
+            }
+
+            if (TryClickApplyExternalChanges(mainWindow))
+            {
+                App.Log("Clicked 'Apply external changes' on the external-changes banner.");
+                clicked = true;
+                clicks++;
+                // Let the confirmation prompt appear before looking for it.
+                Thread.Sleep(700);
+                continue;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        if (!clicked)
+        {
+            App.Log(waitForBanner
+                ? "External-changes banner never appeared within the wait budget — nothing to apply."
+                : "No external-changes banner present.");
+        }
+        else
+        {
+            WriteDiagnosticDump(mainWindow, "external-changes");
+            App.Log("External-changes banner did not clear within the timeout.");
+        }
+    }
+
+    /// <summary>
+    /// The banner's "Apply external changes" button. Returns null when the banner
+    /// is not on screen, including when only the hidden screen-reader copies exist.
+    /// </summary>
+    private static AutomationElement? FindVisibleApplyButton(AutomationElement root)
+    {
+        AutomationElementCollection buttons;
+        try
+        {
+            buttons = root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+        }
+        catch
+        {
+            return null;
+        }
+
+        foreach (AutomationElement button in buttons)
+        {
+            try
+            {
+                if (!string.Equals(GetName(button), ApplyExternalChangeLabels[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Ignore anything hidden, offscreen or disabled: only a banner the
+                // author can actually see and press counts.
+                if (button.Current.IsOffscreen || !button.Current.IsEnabled) continue;
+                if (button.Current.BoundingRectangle.IsEmpty) continue;
+
+                return button;
+            }
+            catch (ElementNotAvailableException)
+            {
+                continue;
+            }
+            catch
+            {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryClickApplyExternalChanges(AutomationElement mainWindow)
+    {
+        var button = FindVisibleApplyButton(mainWindow);
+        if (button == null) return false;
+
+        if (Invoke(button, out _)) return true;
+
+        // Some WebView2 buttons ignore Invoke but honor a real click, so fall back
+        // to clicking the centre of the button's own bounds.
+        return TryClickAtCenter(button);
+    }
+
+    /// <summary>
+    /// Clicks the centre of an element using synthetic input — the fallback for
+    /// WebView2 controls that expose no usable automation pattern.
+    /// </summary>
+    private static bool TryClickAtCenter(AutomationElement element)
+    {
+        try
+        {
+            var rect = element.Current.BoundingRectangle;
+            if (rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0) return false;
+
+            int x = (int)(rect.X + rect.Width / 2);
+            int y = (int)(rect.Y + rect.Height / 2);
+
+            NativeInput.Click(x, y);
+            App.Log($"Clicked external-changes button at {x},{y}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Click at centre failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Clicks "Apply external changes" in the "Overwrite your unsaved edits" prompt.
+    /// </summary>
+    private static bool ConfirmOverwritePrompt(Process process, AutomationElement mainWindow)
+    {
+        foreach (var root in EnumerateDialogRoots(process, mainWindow))
+        {
+            if (FindByTypeAndName(root, ControlType.Text, "Overwrite your unsaved edits") == null
+                && FindByTypeAndName(root, ControlType.Text, "external changes") == null)
+            {
+                continue;
+            }
+
+            if (ClickDialogButton(root, out _, ApplyExternalChangeLabels[0]))
+            {
+                return true;
+            }
+
+            // The prompt's button can be a plain WebView2 action button too.
+            var button = FindVisibleApplyButton(root);
+            if (button != null && TryClickAtCenter(button))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ---- Dialog lifecycle -------------------------------------------------

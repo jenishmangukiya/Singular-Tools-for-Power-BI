@@ -4,6 +4,5 @@
   "displayName": "Page 1",
   "displayOption": "FitToPage",
   "height": 1080,
-  "width": 1920,
-  "visibility": "HiddenInViewMode"
+  "width": 1920
 }

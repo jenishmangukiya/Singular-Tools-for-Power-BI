@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
@@ -67,14 +65,15 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
     public string Description => "Publish a report to multiple Power BI workspaces at once";
     public string Glyph => "\uE724";
 
-    private static string SelectionPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SingularPowerTools",
-        "publishing-manager.json");
-
     private readonly ObservableCollection<WorkspaceItemViewModel> _items = new();
     private CancellationTokenSource? _cts;
     private bool _isBusy;
+    private bool _subscribed;
+    private WorkspaceCache _cache = WorkspaceCache.Empty();
+
+    /// <summary>Report whose saved selection is currently applied, so an edit or
+    /// external save to the same report does not overwrite unsaved ticks.</summary>
+    private string _selectionReportPath = string.Empty;
 
     public ReportPublishingManagerPage()
     {
@@ -87,6 +86,12 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
 
     private void ReportPublishingManagerPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        if (_subscribed)
+        {
+            App.Workspace.Changed -= Workspace_Changed;
+            _subscribed = false;
+        }
+
         SaveSelection();
     }
 
@@ -95,6 +100,8 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
         try
         {
             App.Log("ReportPublishingManagerPage loaded.");
+            Subscribe();
+            LoadCachedWorkspaces();
             UpdateReportStatus();
             UpdateEmptyStates();
         }
@@ -106,8 +113,82 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
 
     public void OnActivated()
     {
+        Subscribe();
+        LoadCachedWorkspaces();
         UpdateReportStatus();
         UpdateEmptyStates();
+    }
+
+    private void Subscribe()
+    {
+        if (_subscribed) return;
+        App.Workspace.Changed += Workspace_Changed;
+        _subscribed = true;
+    }
+
+    /// <summary>
+    /// The saved ticks belong to the report, so a different report in the shared
+    /// session means a different pre-selection for the same cached workspace list.
+    /// Edits to the same report are ignored so unsaved ticks survive.
+    /// </summary>
+    private void Workspace_Changed(object? sender, EventArgs e)
+    {
+        if (_isBusy) return;
+
+        var path = App.Workspace.HasReport ? App.Workspace.ReportPath : string.Empty;
+        if (string.Equals(path, _selectionReportPath, StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateReportStatus();
+            return;
+        }
+
+        _selectionReportPath = path;
+        ApplySavedSelection();
+        UpdateReportStatus();
+    }
+
+    /// <summary>Re-ticks the current list from the current report's saved selection.</summary>
+    private void ApplySavedSelection()
+    {
+        var saved = LoadSavedSelection();
+        foreach (var item in _items)
+        {
+            item.IsSelected = saved.Contains(item.Name);
+        }
+
+        UpdateSummary();
+        if (!_isBusy) PublishButton.IsEnabled = _items.Any(i => i.IsSelected);
+    }
+
+    /// <summary>
+    /// Populates the list from the machine-level cache so the tool opens ready to
+    /// publish. Detection stays available but is no longer a prerequisite.
+    /// </summary>
+    private void LoadCachedWorkspaces()
+    {
+        _cache = WorkspaceCacheStore.Load();
+
+        // First run after an upgrade: seed from the per-tool selection files the
+        // older builds wrote, so existing users keep their list.
+        if (_cache.Names.Count == 0)
+        {
+            var migrated = WorkspaceCacheStore.TryMigrateLegacySelection();
+            if (migrated != null && migrated.Names.Count > 0)
+            {
+                _cache = migrated;
+                WorkspaceCacheStore.Save(_cache);
+                App.Log($"Migrated {migrated.Names.Count} workspace name(s) from the legacy selection file.");
+            }
+        }
+
+        WorkspaceDetectPresenter.Apply(DetectButton, LastDetectedText, _cache);
+
+        _selectionReportPath = App.Workspace.HasReport ? App.Workspace.ReportPath : string.Empty;
+
+        if (_cache.Names.Count > 0 && _items.Count == 0)
+        {
+            PopulateWorkspaces(_cache.Names);
+        }
     }
 
     private void UpdateReportStatus()
@@ -118,7 +199,9 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
         {
             var reportName = PowerBiDetector.ExtractReportName(title);
             ReportNameText.Text = string.IsNullOrEmpty(reportName) ? title : reportName;
-            ReportHintText.Text = "Detect the workspaces you can publish to, then publish to several at once.";
+            ReportHintText.Text = App.Workspace.HasReport
+                ? "Detect the workspaces you can publish to, then publish to several at once."
+                : "Open this report in Singular Tools to remember your workspace selection, then publish to several at once.";
             ReportStatusGlyph.Glyph = "\uE73E";
         }
         else
@@ -139,13 +222,17 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
 
         if (pbiRunning)
         {
-            NoWorkspacesTitle.Text = "No workspaces detected";
-            NoWorkspacesHint.Text = "Click 'Detect workspaces' to read the list from Power BI Desktop.";
+            NoWorkspacesTitle.Text = "No workspaces yet";
+            NoWorkspacesHint.Text = _cache.HasBeenDetected
+                ? "The last detection returned no workspaces. Redetect once Power BI Desktop has finished loading."
+                : "Click 'Detect workspaces' to read the list from Power BI Desktop.";
         }
         else
         {
             NoWorkspacesTitle.Text = "Power BI Desktop is not running";
-            NoWorkspacesHint.Text = "Open the report in Power BI Desktop first, then detect its workspaces.";
+            NoWorkspacesHint.Text = _cache.Names.Count > 0
+                ? "The workspaces below were detected earlier. Open your report and redetect to refresh them."
+                : "Open the report in Power BI Desktop first, then detect its workspaces.";
         }
 
         UpdateSummary();
@@ -191,6 +278,13 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
         {
             SetBusy(true);
             var names = await Task.Run(() => PowerBiPublisher.DetectWorkspaces());
+
+            if (names.Count > 0)
+            {
+                _cache = WorkspaceDetectPresenter.Merge(names, _cache);
+                WorkspaceCacheStore.Save(_cache);
+                WorkspaceDetectPresenter.Apply(DetectButton, LastDetectedText, _cache);
+            }
 
             PopulateWorkspaces(names);
             UpdateEmptyStates();
@@ -363,30 +457,40 @@ public sealed partial class ReportPublishingManagerPage : Page, IToolPage
 
     // ---- Persistence -----------------------------------------------------
 
+    /// <summary>
+    /// The report's pre-ticked workspaces, stored with the report in
+    /// <c>singular-tools.json</c>. Multi-workspace publishing is report specific,
+    /// so the selection travels with the report rather than the machine.
+    /// </summary>
     private HashSet<string> LoadSavedSelection()
     {
+        if (!App.Workspace.HasReport) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         try
         {
-            if (!File.Exists(SelectionPath)) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var json = File.ReadAllText(SelectionPath);
-            var list = JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
-            return new HashSet<string>(list, StringComparer.OrdinalIgnoreCase);
+            var names = ReportConfigStore.Load(App.Workspace.ReportPath).GetPublishWorkspaces();
+            return new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
         }
-        catch
+        catch (Exception ex)
         {
+            App.Log($"Load publishing selection failed: {ex.Message}");
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
     }
 
     private void SaveSelection()
     {
+        if (!App.Workspace.HasReport) return;
+
         try
         {
-            var dir = Path.GetDirectoryName(SelectionPath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            var config = ReportConfigStore.Load(App.Workspace.ReportPath);
+            config.SetPublishWorkspaces(_items.Where(i => i.IsSelected).Select(i => i.Name));
 
-            var selected = _items.Where(i => i.IsSelected).Select(i => i.Name).ToList();
-            File.WriteAllText(SelectionPath, JsonSerializer.Serialize(selected));
+            if (!ReportConfigStore.Save(App.Workspace.ReportPath, config))
+            {
+                App.Log("Could not save publishing selection to singular-tools.json.");
+            }
         }
         catch (Exception ex)
         {

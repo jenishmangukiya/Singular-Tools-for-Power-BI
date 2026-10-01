@@ -65,9 +65,15 @@
                     ToolTipService.ToolTip="Read the available workspaces from Power BI Desktop">
                     <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
                         <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                        <TextBlock Text="Detect workspaces" />
+                        <TextBlock x:Name="DetectButtonText" Text="Detect workspaces" />
                     </StackPanel>
                 </Button>
+
+                <TextBlock
+                    x:Name="LastDetectedText"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    Visibility="Collapsed" />
 
                 <Button
                     x:Name="SelectAllButton"

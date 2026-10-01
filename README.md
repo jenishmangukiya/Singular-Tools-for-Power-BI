@@ -37,6 +37,10 @@
   - Direct read/write to Power BI Enhanced Report format (`definition/pages/pages.json` & `page.json`).
   - Atomic file writes with immediate reload support in Power BI Desktop.
 
+- **📤 Multi-Workspace Publish**:
+  - Publish the open report to several Power BI workspaces at once from a single checklist.
+  - Detected workspaces are cached per machine, while your ticked destinations are remembered with the report in `singular-tools.json`, alongside your publishing groups and color-sync rules.
+
 - **📤 Publishing Groups**:
   - Save a named page recipe per audience, e.g. *Client A – External*, and choose which pages stay visible for it.
   - Publish the group to any workspace: pick a destination from the detected list, or type one by hand.

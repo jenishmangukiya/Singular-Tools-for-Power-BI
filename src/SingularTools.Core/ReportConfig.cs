@@ -25,6 +25,8 @@ public sealed class ReportConfig
     public const string RulesKey = "rules";
     public const string PublishingGroupsFeature = "publishGroups";
     public const string GroupsKey = "groups";
+    public const string PublishMultiFeature = "publishMulti";
+    public const string WorkspacesKey = "workspaces";
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -165,7 +167,8 @@ public sealed class ReportConfig
             groups.Add(new PublishingGroup
             {
                 Name = name,
-                VisiblePageIds = ReadPageIds(group["visiblePageIds"] as JsonArray)
+                VisiblePageIds = ReadPageIds(group["visiblePageIds"] as JsonArray),
+                WorkspaceNames = ReadPageIds(group["workspaceNames"] as JsonArray)
             });
         }
 
@@ -186,15 +189,48 @@ public sealed class ReportConfig
                 if (!string.IsNullOrWhiteSpace(id)) pageIds.Add(id);
             }
 
+            var workspaces = new JsonArray();
+            foreach (var workspace in group.WorkspaceNames ?? new List<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(workspace)) workspaces.Add(workspace);
+            }
+
             array.Add(new JsonObject
             {
                 ["name"] = group.Name,
-                ["visiblePageIds"] = pageIds
+                ["visiblePageIds"] = pageIds,
+                ["workspaceNames"] = workspaces
             });
         }
 
         section[GroupsKey] = array;
         SetFeatureSection(PublishingGroupsFeature, section);
+    }
+
+    /// <summary>
+    /// Reads the workspaces remembered for multi-workspace publishing (empty when
+    /// absent). This is the report's pre-ticked checkbox selection, so publishing
+    /// the same report again needs no re-ticking.
+    /// </summary>
+    public List<string> GetPublishWorkspaces()
+    {
+        if (FeatureSection(PublishMultiFeature) is not JsonObject section) return new List<string>();
+        return ReadPageIds(section[WorkspacesKey] as JsonArray);
+    }
+
+    /// <summary>Writes the multi-workspace publish selection, preserving any other keys in the section.</summary>
+    public void SetPublishWorkspaces(IEnumerable<string> workspaces)
+    {
+        var section = FeatureSection(PublishMultiFeature) as JsonObject ?? new JsonObject();
+        var array = new JsonArray();
+
+        foreach (var workspace in workspaces ?? Array.Empty<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(workspace)) array.Add(workspace);
+        }
+
+        section[WorkspacesKey] = array;
+        SetFeatureSection(PublishMultiFeature, section);
     }
 
     private int ReadSchemaVersion()

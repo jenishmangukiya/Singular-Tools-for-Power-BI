@@ -37,18 +37,23 @@ public sealed class GroupViewModel : INotifyPropertyChanged
 
     private int _visibleCount;
     private int _totalCount;
+    private bool _hasReport = true;
 
-    public void SetCounts(int visibleCount, int totalCount)
+    public void SetCounts(int visibleCount, int totalCount, bool hasReport = true)
     {
-        if (_visibleCount == visibleCount && _totalCount == totalCount) return;
+        if (_visibleCount == visibleCount && _totalCount == totalCount && _hasReport == hasReport) return;
+
         _visibleCount = visibleCount;
         _totalCount = totalCount;
+        _hasReport = hasReport;
         Raise(nameof(Summary));
     }
+
     public string Summary
     {
         get
         {
+            if (!_hasReport) return "No report loaded";
             if (_totalCount == 0) return "No pages";
             return $"{_visibleCount} of {_totalCount} pages visible";
         }
@@ -95,9 +100,6 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     public string Title => "Publishing Groups";
     public string Description => "Choose which pages each workspace sees when you publish";
     public string Glyph => "\uE724";
-
-    /// <summary>How long to wait after swapping visibility so Power BI Desktop can reload it.</summary>
-    private const int VisibilitySettleMs = 900;
 
     private static string SavedWorkspacesPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -201,9 +203,44 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         _suppressSelection = false;
 
         _current = target;
+
+        // The page list is the same for every group, so the visible/hidden counts
+        // can be resolved for all of them here. Without this only the selected
+        // group gets counts, and the rest sit at their zero defaults showing
+        // "No pages" until each is clicked.
+        UpdateAllGroupCounts();
+
         ShowEditor(target);
         UpdateGroupCount();
         UpdateEmptyStates();
+    }
+
+    /// <summary>
+    /// Fills in each group's "N of M pages visible" summary from the report's
+    /// pages, so the whole list is correct before any group is selected.
+    /// </summary>
+    private void UpdateAllGroupCounts()
+    {
+        if (!App.Workspace.HasReport)
+        {
+            foreach (var group in _groups)
+            {
+                group.SetCounts(0, 0, hasReport: false);
+            }
+
+            return;
+        }
+
+        var pages = App.Workspace.Manager.Pages;
+        var total = pages.Count;
+        var pageIds = new HashSet<string>(pages.Select(p => p.Id), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in _groups)
+        {
+            // Ignore ids for pages that no longer exist, matching what publishing does.
+            var visible = group.Model.VisiblePageIds.Count(id => pageIds.Contains(id));
+            group.SetCounts(visible, total);
+        }
     }
 
     private void ShowEditor(GroupViewModel? group)
@@ -323,18 +360,90 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     {
         _isBusy = busy;
         NewGroupButton.IsEnabled = !busy && App.Workspace.HasReport;
+
+        // The publish button stays the visual anchor of the operation: instead of
+        // only greying out, it swaps its icon for a spinner and names the step.
         PublishButton.IsEnabled = !busy && _current != null && _pages.Count > 0;
         ShowAllButton.IsEnabled = PublishButton.IsEnabled;
         HideAllButton.IsEnabled = PublishButton.IsEnabled;
         GroupsListView.IsEnabled = !busy;
+
+        // The page switches drive what gets published, so they must not move
+        // underneath a run that has already swapped visibility.
+        PagesListView.IsEnabled = !busy;
+        GroupNameBox.IsEnabled = !busy;
+
         CancelButton.Visibility = busy && allowCancel ? Visibility.Visible : Visibility.Collapsed;
+
+        SetPublishButtonState(busy ? PublishStep.Preparing : (PublishStep?)null);
+    }
+
+    /// <summary>Which stage of the publish the spinner is currently reporting.</summary>
+    private enum PublishStep
+    {
+        Preparing,
+        WaitingForPowerBi,
+        Publishing,
+        Finishing,
+        ApplyingExternalChanges
+    }
+
+    /// <summary>
+    /// Swaps the publish button between its idle look and a spinner with the
+    /// current step. Passing null restores the idle icon and label.
+    /// </summary>
+    private void SetPublishButtonState(PublishStep? step)
+    {
+        bool busy = step.HasValue;
+
+        PublishButtonProgress.IsActive = busy;
+        PublishButtonProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        PublishButtonIcon.Visibility = busy ? Visibility.Collapsed : Visibility.Visible;
+
+        PublishButtonText.Text = step switch
+        {
+            PublishStep.Preparing => "Preparing pages…",
+            PublishStep.WaitingForPowerBi => "Applying in Power BI…",
+            PublishStep.Publishing => "Publishing…",
+            PublishStep.Finishing => "Restoring pages…",
+            PublishStep.ApplyingExternalChanges => "Applying external changes…",
+            _ => "Publish this group"
+        };
+    }
+
+    /// <summary>Maps a publisher stage onto the button's own step wording.</summary>
+    private static PublishStep ToPublishStep(PublishStage stage) => stage switch
+    {
+        PublishStage.PreparingPages => PublishStep.Preparing,
+        PublishStage.WaitingForPowerBi => PublishStep.WaitingForPowerBi,
+        PublishStage.Publishing => PublishStep.Publishing,
+        PublishStage.WaitingForPublish => PublishStep.Publishing,
+        PublishStage.RestoringPages => PublishStep.Finishing,
+        PublishStage.ApplyingExternalChanges => PublishStep.ApplyingExternalChanges,
+        _ => PublishStep.Publishing
+    };
+
+    /// <summary>
+    /// Publishes a step report from the worker thread onto the button. Marshalled
+    /// to the UI thread, since the automation runs off it.
+    /// </summary>
+    private void ReportPublishStep(PublishStep step)
+    {
+        var dispatcher = DispatcherQueue;
+        if (dispatcher == null || dispatcher.HasThreadAccess)
+        {
+            SetPublishButtonState(step);
+            return;
+        }
+
+        dispatcher.TryEnqueue(() => SetPublishButtonState(step));
     }
 
     // ---- Group list -------------------------------------------------------
 
     private void GroupsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressSelection) return;
+        if (_suppressSelection || _isBusy) return;
 
         _current = GroupsListView.SelectedItem as GroupViewModel;
         ShowEditor(_current);
@@ -342,6 +451,9 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
 
     private static GroupViewModel? GroupFrom(object sender)
         => (sender as FrameworkElement)?.DataContext as GroupViewModel;
+
+    /// <summary>Group-level edits are blocked while a publish is in flight.</summary>
+    private bool CanEditGroups => !_isBusy;
 
     private async void NewGroupButton_Click(object sender, RoutedEventArgs e)
     {
@@ -379,7 +491,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     private async void GroupRename_Click(object sender, RoutedEventArgs e)
     {
         var group = GroupFrom(sender);
-        if (group == null) return;
+        if (group == null || !CanEditGroups) return;
 
         var name = await PromptForNameAsync("Rename group", "Group name", group.Name);
         if (name == null) return;
@@ -404,7 +516,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     private void GroupDuplicate_Click(object sender, RoutedEventArgs e)
     {
         var group = GroupFrom(sender);
-        if (group == null) return;
+        if (group == null || !CanEditGroups) return;
 
         var copy = new PublishingGroup
         {
@@ -430,7 +542,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     private async void GroupDelete_Click(object sender, RoutedEventArgs e)
     {
         var group = GroupFrom(sender);
-        if (group == null) return;
+        if (group == null || !CanEditGroups) return;
 
         var confirmed = await ConfirmAsync(
             "Delete this group?",
@@ -457,7 +569,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
 
     private void GroupNameBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_suppressNameEdit || _current == null) return;
+        if (_suppressNameEdit || _current == null || _isBusy) return;
 
         var name = GroupNameBox.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
@@ -469,6 +581,21 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     private void PageVisibility_Toggled(object sender, RoutedEventArgs e)
     {
         if (sender is not ToggleSwitch toggle) return;
+
+        // While a publish is running the visible pages are already committed and
+        // swapped into the report; reject any change so the run cannot be
+        // steered mid-flight. Revert the visual to match the saved state.
+        if (_isBusy)
+        {
+            if (toggle.DataContext is GroupPageViewModel busyPage && toggle.IsOn != busyPage.IsVisible)
+            {
+                _suppressToggle = true;
+                toggle.IsOn = busyPage.IsVisible;
+                _suppressToggle = false;
+            }
+
+            return;
+        }
 
         // The switch also fires when the list recycles a container for a page
         // flushed by Show/Hide all. Without a page behind it, revert the visual
@@ -498,7 +625,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
 
     private void SetAllPagesVisible(bool visible)
     {
-        if (_current == null) return;
+        if (_current == null || _isBusy) return;
 
         _suppressToggle = true;
         foreach (var page in _pages)
@@ -543,8 +670,13 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         var hiddenCount = pages.Count(p => !visibleIds.Contains(p.Id));
         var missingCount = group.Model.VisiblePageIds.Count(id => !existing.Contains(id));
 
-        var workspaces = await PickWorkspacesAsync(group.Name, hiddenCount, missingCount);
+        var workspaces = await PickWorkspacesAsync(group.Model, hiddenCount, missingCount);
         if (workspaces == null) return;
+        if (workspaces.Count == 0)
+        {
+            ToastService.Show("Choose at least one workspace to publish to.", ToastSeverity.Warning);
+            return;
+        }
         if (workspaces.Count == 0)
         {
             ToastService.Show("Choose at least one workspace to publish to.", ToastSeverity.Warning);
@@ -552,7 +684,6 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         }
 
         // Remember the report's own visibility so it can be put back afterwards.
-        var originalVisibility = App.Workspace.Manager.CaptureVisibility();
         var hiddenByPageId = pages.ToDictionary(
             p => p.Id,
             p => !visibleIds.Contains(p.Id),
@@ -562,39 +693,51 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         var token = _cts.Token;
         SetBusy(true, allowCancel: true);
 
-        int succeeded = 0;
         try
         {
-            App.Workspace.ApplyTransientEdit(m => m.SetPageVisibility(hiddenByPageId));
             ToastService.Show(
                 hiddenCount > 0
-                    ? $"Prepared '{group.Name}' — {hiddenCount} page(s) hidden for this publish."
-                    : $"Prepared '{group.Name}' — all pages visible.",
+                    ? $"Preparing '{group.Name}' — {hiddenCount} page(s) hidden for this publish."
+                    : $"Preparing '{group.Name}' — all pages visible.",
                 ToastSeverity.Informational);
 
-            // Give Power BI Desktop a moment to reload the swapped visibility.
-            await Task.Delay(VisibilitySettleMs, token);
+            // The publisher swaps visibility, applies the external change in Power
+            // BI Desktop, publishes, then always restores the original visibility.
+            // Progress is marshalled back onto the button so the author can see
+            // which stage is running.
+            var progress = new Progress<PublishStage>(stage => ReportPublishStep(ToPublishStep(stage)));
 
-            foreach (var workspace in workspaces)
+            var result = await Task.Run(() => PowerBiPublisher.PublishToWorkspaces(
+                workspaces,
+                hiddenByPageId,
+                () => App.Workspace.Manager.CaptureVisibility(),
+                visibility => App.Workspace.ApplyTransientEdit(m => m.SetPageVisibility(visibility)),
+                progress,
+                token), token);
+
+            var published = workspaces.Count - CountFailures(result);
+
+            if (result.Success)
             {
-                token.ThrowIfCancellationRequested();
-
-                var result = await Task.Run(() => PowerBiPublisher.PublishToWorkspace(workspace, token), token);
-
-                if (result.Success)
-                {
-                    succeeded++;
-                    ToastService.Show($"Published to '{workspace}'.", ToastSeverity.Success);
-                }
-                else
-                {
-                    ToastService.Show($"'{workspace}': {result.Error ?? "Publish failed."}", ToastSeverity.Error);
-                }
+                ToastService.Show(
+                    $"Published '{group.Name}' to {published} workspace(s).",
+                    ToastSeverity.Success);
+            }
+            else if (published > 0)
+            {
+                ToastService.Show(
+                    $"{published} of {workspaces.Count} workspace(s) succeeded. {result.Error}",
+                    ToastSeverity.Warning);
+            }
+            else
+            {
+                ToastService.Show(result.Error ?? "Publishing failed.", ToastSeverity.Error);
             }
 
-            ToastService.Show(
-                $"Finished: {succeeded} of {workspaces.Count} workspace(s) succeeded.",
-                succeeded == workspaces.Count ? ToastSeverity.Success : ToastSeverity.Warning);
+            if (!string.IsNullOrEmpty(result.Warning))
+            {
+                ToastService.Show(result.Warning, ToastSeverity.Warning);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -607,23 +750,16 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         }
         finally
         {
-            // Always put the report's own visibility back, even on failure.
-            try
-            {
-                App.Workspace.ApplyTransientEdit(m => m.SetPageVisibility(originalVisibility));
-            }
-            catch (Exception ex)
-            {
-                App.Log($"Restoring page visibility failed: {ex}");
-                ToastService.Show("Could not restore page visibility — check the report in Power BI Desktop.", ToastSeverity.Error);
-            }
-
             SetBusy(false);
             _cts?.Dispose();
             _cts = null;
             UpdateVisibilitySummary();
         }
     }
+
+    /// <summary>Counts the workspaces reported as failed in a combined error message.</summary>
+    private static int CountFailures(PublishResult result)
+        => PowerBiPublisher.CountFailedWorkspaces(result);
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
@@ -637,77 +773,106 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     {
         public string Name { get; set; } = string.Empty;
         public bool IsChecked { get; set; }
+
+        /// <summary>True when this name is remembered by the group but not in the cache.</summary>
+        public bool IsMissing { get; set; }
     }
 
     /// <summary>
     /// Shows the workspace picker and returns the chosen names, or null when the
-    /// author cancels. Workspaces can be detected from Power BI Desktop or typed
-    /// by hand, which also works when Desktop is not signed in.
+    /// author cancels.
+    ///
+    /// The list comes from the machine-level cache, so it is populated the moment
+    /// the dialog opens. Anything the group was last published to is pre-ticked,
+    /// which means publishing the same group again needs no re-ticking. Detection
+    /// stays available as "Redetect" for when workspaces change.
     /// </summary>
-    private async Task<List<string>?> PickWorkspacesAsync(string groupName, int hiddenCount, int missingCount)
+    private async Task<List<string>?> PickWorkspacesAsync(PublishingGroup group, int hiddenCount, int missingCount)
     {
+        var cache = WorkspaceCacheStore.Load();
+        var remembered = new HashSet<string>(
+            group.WorkspaceNames ?? new List<string>(),
+            StringComparer.OrdinalIgnoreCase);
+
         var choices = new List<WorkspaceChoice>();
-        foreach (var name in LoadSavedWorkspaces())
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in cache.Names)
         {
-            choices.Add(new WorkspaceChoice { Name = name, IsChecked = true });
+            choices.Add(new WorkspaceChoice { Name = name, IsChecked = remembered.Contains(name) });
+            known.Add(name);
+        }
+
+        // A workspace the group used before but that the cache no longer lists stays
+        // visible and ticked, tagged "not found", until a redetect reconciles it.
+        // Silently dropping it would lose the author's choice.
+        foreach (var name in group.WorkspaceNames ?? new List<string>())
+        {
+            if (known.Contains(name)) continue;
+
+            choices.Add(new WorkspaceChoice { Name = name, IsChecked = true, IsMissing = true });
+            known.Add(name);
         }
 
         var listPanel = new StackPanel { Spacing = 2 };
         var emptyHint = new TextBlock
         {
-            Text = "No workspaces yet — detect them, or type a name below.",
+            Text = "No workspaces yet — click 'Detect workspaces' to read them from Power BI Desktop.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.8
         };
+
+        ContentDialog? dialog = null;
+
+        void SyncPrimaryState()
+        {
+            if (dialog == null) return;
+
+            dialog.IsPrimaryButtonEnabled = choices.Any(c => c.IsChecked);
+        }
 
         void Rebuild()
         {
             listPanel.Children.Clear();
             foreach (var choice in choices.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
             {
-                var box = new CheckBox { Content = choice.Name, IsChecked = choice.IsChecked };
-                box.Checked += (_, _) => choice.IsChecked = true;
-                box.Unchecked += (_, _) => choice.IsChecked = false;
-                listPanel.Children.Add(box);
+                if (choice.IsMissing)
+                {
+                    var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                    var box = new CheckBox { Content = choice.Name, IsChecked = choice.IsChecked };
+                    box.Checked += (_, _) => { choice.IsChecked = true; SyncPrimaryState(); };
+                    box.Unchecked += (_, _) => { choice.IsChecked = false; SyncPrimaryState(); };
+                    row.Children.Add(box);
+                    row.Children.Add(new TextBlock
+                    {
+                        Text = "not found",
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Opacity = 0.7
+                    });
+                    listPanel.Children.Add(row);
+                    continue;
+                }
+
+                var plain = new CheckBox { Content = choice.Name, IsChecked = choice.IsChecked };
+                plain.Checked += (_, _) => { choice.IsChecked = true; SyncPrimaryState(); };
+                plain.Unchecked += (_, _) => { choice.IsChecked = false; SyncPrimaryState(); };
+                listPanel.Children.Add(plain);
             }
 
             emptyHint.Visibility = choices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            SyncPrimaryState();
         }
-
-        var addBox = new TextBox
-        {
-            PlaceholderText = "Type a workspace name",
-            Width = 240
-        };
-
-        var addButton = new Button { Content = "Add" };
-        void AddTyped()
-        {
-            var typed = addBox.Text.Trim();
-            if (string.IsNullOrEmpty(typed)) return;
-
-            var existing = choices.FirstOrDefault(c => string.Equals(c.Name, typed, StringComparison.OrdinalIgnoreCase));
-            if (existing != null)
-            {
-                existing.IsChecked = true;
-            }
-            else
-            {
-                choices.Add(new WorkspaceChoice { Name = typed, IsChecked = true });
-            }
-
-            addBox.Text = string.Empty;
-            Rebuild();
-        }
-
-        addButton.Click += (_, _) => AddTyped();
-        addBox.KeyDown += (_, args) =>
-        {
-            if (args.Key == VirtualKey.Enter) AddTyped();
-        };
 
         var progress = new ProgressRing { IsActive = false, Width = 18, Height = 18 };
-        var detectButton = new Button { Content = "Detect workspaces" };
+        var detectButton = new Button { Content = WorkspaceDetectPresenter.LabelFor(cache) };
+        var lastDetectedText = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0.7
+        };
+
+        WorkspaceDetectPresenter.Apply(detectButton, lastDetectedText, cache);
+
         detectButton.Click += async (_, _) =>
         {
             detectButton.IsEnabled = false;
@@ -715,18 +880,29 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
             try
             {
                 var names = await Task.Run(() => PowerBiPublisher.DetectWorkspaces());
-                int added = 0;
-                foreach (var name in names)
+                if (names.Count == 0)
                 {
-                    if (choices.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))) continue;
-                    choices.Add(new WorkspaceChoice { Name = name, IsChecked = true });
-                    added++;
+                    ToastService.Show("No workspaces were found in the publish dialog.", ToastSeverity.Warning);
+                    return;
                 }
 
+                var refreshed = WorkspaceDetectPresenter.Merge(names, cache);
+                WorkspaceCacheStore.SaveDetected(refreshed.Names);
+                cache = WorkspaceCacheStore.Load();
+
+                // Reconcile: keep the author's ticks, adopt the fresh list, and drop
+                // references to workspaces Desktop no longer reports.
+                var ticked = new HashSet<string>(
+                    choices.Where(c => c.IsChecked).Select(c => c.Name),
+                    StringComparer.OrdinalIgnoreCase);
+
+                choices = cache.Names
+                    .Select(name => new WorkspaceChoice { Name = name, IsChecked = ticked.Contains(name) })
+                    .ToList();
+
+                WorkspaceDetectPresenter.Apply(detectButton, lastDetectedText, cache);
                 Rebuild();
-                ToastService.Show(
-                    names.Count == 0 ? "No workspaces were found in the publish dialog." : $"Found {names.Count} workspace(s) ({added} new).",
-                    names.Count > 0 ? ToastSeverity.Success : ToastSeverity.Warning);
+                ToastService.Show($"Found {names.Count} workspace(s).", ToastSeverity.Success);
             }
             catch (Exception ex)
             {
@@ -746,15 +922,12 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         var detectRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         detectRow.Children.Add(detectButton);
         detectRow.Children.Add(progress);
-
-        var addRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        addRow.Children.Add(addBox);
-        addRow.Children.Add(addButton);
+        detectRow.Children.Add(lastDetectedText);
 
         var root = new StackPanel { Spacing = 10, MinWidth = 340 };
         root.Children.Add(new TextBlock
         {
-            Text = $"Choose the workspaces to publish '{groupName}' to.",
+            Text = $"Choose the workspaces to publish '{group.Name}' to.",
             TextWrapping = TextWrapping.Wrap
         });
 
@@ -772,30 +945,22 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         root.Children.Add(detectRow);
         root.Children.Add(scroller);
         root.Children.Add(emptyHint);
-        root.Children.Add(addRow);
 
-        Rebuild();
-
-        var dialog = new ContentDialog
+        // Declared before the first Rebuild so the enable/disable sync can run.
+        dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = $"Publish '{groupName}'",
+            Title = $"Publish '{group.Name}'",
             Content = root,
             PrimaryButtonText = "Publish",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary
         };
 
+        Rebuild();
+
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary) return null;
-
-        // Include a name that was typed but not yet added.
-        var pending = addBox.Text.Trim();
-        if (!string.IsNullOrEmpty(pending)
-            && !choices.Any(c => string.Equals(c.Name, pending, StringComparison.OrdinalIgnoreCase)))
-        {
-            choices.Add(new WorkspaceChoice { Name = pending, IsChecked = true });
-        }
 
         var selected = choices
             .Where(c => c.IsChecked && !string.IsNullOrWhiteSpace(c.Name))
@@ -803,7 +968,10 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        SaveSavedWorkspaces(selected);
+        // Remember this group's destination so the next publish needs no re-ticking.
+        group.WorkspaceNames = selected;
+        SaveGroups();
+
         return selected;
     }
 
@@ -926,29 +1094,9 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
 
     private static List<string> LoadSavedWorkspaces()
     {
-        try
-        {
-            if (!File.Exists(SavedWorkspacesPath)) return new List<string>();
-            var json = File.ReadAllText(SavedWorkspacesPath);
-            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
-        }
-        catch
-        {
-            return new List<string>();
-        }
-    }
-
-    private static void SaveSavedWorkspaces(List<string> names)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(SavedWorkspacesPath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(SavedWorkspacesPath, JsonSerializer.Serialize(names, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch
-        {
-            // Best-effort convenience only.
-        }
+        // Superseded by the machine-level workspace cache; kept read-only so the
+        // migration can pick up lists written by earlier builds.
+        return WorkspaceCacheStore.TryMigrateLegacySelection()?.Names ?? new List<string>();
     }
 }
+

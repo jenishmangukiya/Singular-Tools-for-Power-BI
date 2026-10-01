@@ -115,9 +115,12 @@ public sealed class SemanticColorRule
 /// <summary>
 /// A named page recipe for publishing. It records which report pages stay
 /// visible when the report is published with this choice; every other page is
-/// hidden in the published copy. Target workspaces are chosen at publish time
-/// and are deliberately not stored here, so the same recipe can go to any
-/// workspace.
+/// hidden in the published copy.
+///
+/// It also remembers the workspaces it was last published to, so publishing the
+/// same group again does not mean re-ticking the destination every time. The
+/// names are stored with the report (not the machine) because "where this group
+/// goes" is a property of the group, while "which workspaces exist" is not.
 /// </summary>
 public sealed class PublishingGroup
 {
@@ -126,6 +129,9 @@ public sealed class PublishingGroup
 
     /// <summary>Ids of the pages that stay visible when this group is published.</summary>
     public List<string> VisiblePageIds { get; set; } = new();
+
+    /// <summary>Workspaces this group was last published to; pre-ticked next time.</summary>
+    public List<string> WorkspaceNames { get; set; } = new();
 }
 
 /// <summary>Result of applying semantic color rules to a report.</summary>
