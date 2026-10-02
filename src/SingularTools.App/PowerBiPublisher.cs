@@ -82,6 +82,153 @@ internal static class PowerBiPublisher
     // ---- Public API -------------------------------------------------------
 
     /// <summary>
+    /// Whether Power BI Desktop is running. The Sort by Column tool writes TMDL
+    /// directly, so it only makes sense to ask Desktop to reload when it is open.
+    /// </summary>
+    public static bool IsPowerBiRunning() => FindPowerBiProcess() != null;
+
+    /// <summary>
+    /// Makes Power BI Desktop pick up files that were changed on disk (TMDL, pages,
+    /// anything else): clicks the "Apply external changes" banner and confirms the
+    /// "Overwrite your unsaved edits" prompt if Desktop raises one. Blocking, so
+    /// call it from a background thread.
+    ///
+    /// <paramref name="waitForBanner"/> is true when the banner is expected to
+    /// arrive a few seconds after the files changed rather than already being on
+    /// screen. Never throws: a banner that cannot be cleared is logged, not fatal.
+    /// </summary>
+    public static bool TryApplyExternalChangesInPowerBi(bool waitForBanner = true)
+    {
+        var process = FindPowerBiProcess();
+        if (process == null)
+        {
+            App.Log("Power BI Desktop is not running — no external change to apply.");
+            return false;
+        }
+
+        var mainWindow = FindMainWindow(process);
+        if (mainWindow == null)
+        {
+            App.Log("Could not access the Power BI Desktop window — external change not applied.");
+            return false;
+        }
+
+        FlushExternalChanges(process, mainWindow, CancellationToken.None, waitForBanner);
+        return true;
+    }
+
+    /// <summary>
+    /// Saves the report open in Power BI Desktop so the author's unsaved edits are
+    /// flushed to the .pbip project folder. Singular Tools reads that folder, so
+    /// this is called when the app regains focus to avoid showing stale data.
+    ///
+    /// It invokes the ribbon Save button through UI Automation, so Desktop does not
+    /// need to be foreground and its focus is not stolen. Skips the click when
+    /// Desktop reports no unsaved changes. Blocking, so call it from a background
+    /// thread. Never throws: failures are logged, not fatal.
+    /// </summary>
+    public static bool TrySaveOpenReportInPowerBi()
+    {
+        var process = FindPowerBiProcess();
+        if (process == null)
+        {
+            App.Log("Power BI Desktop is not running — nothing to save.");
+            return false;
+        }
+
+        var mainWindow = FindMainWindow(process);
+        if (mainWindow == null)
+        {
+            App.Log("Could not access the Power BI Desktop window — report not saved.");
+            return false;
+        }
+
+        var saveButton = FindReportSaveButton(mainWindow);
+        if (saveButton == null)
+        {
+            App.Log("Could not find the Save button in Power BI Desktop — report not saved.");
+            return false;
+        }
+
+        try
+        {
+            if (!saveButton.Current.IsEnabled)
+            {
+                App.Log("Power BI Desktop has no unsaved changes.");
+                return false;
+            }
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (!Invoke(saveButton, out var error))
+        {
+            App.Log($"Could not click Save in Power BI Desktop: {error}");
+            return false;
+        }
+
+        App.Log("Clicked Save in Power BI Desktop to flush unsaved edits.");
+        return true;
+    }
+
+    /// <summary>
+    /// The report's Save button on the ribbon. Matches the name exactly so
+    /// "Save as" / "Save a copy" and dialog buttons named "Save" are ignored, and
+    /// only returns a button the author can actually see.
+    /// </summary>
+    private static AutomationElement? FindReportSaveButton(AutomationElement root)
+    {
+        AutomationElementCollection buttons;
+        try
+        {
+            buttons = root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+        }
+        catch
+        {
+            return null;
+        }
+
+        AutomationElement? disabled = null;
+        foreach (AutomationElement button in buttons)
+        {
+            try
+            {
+                if (!string.Equals(GetName(button), "Save", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (button.Current.IsOffscreen || button.Current.BoundingRectangle.IsEmpty)
+                {
+                    continue;
+                }
+
+                // Prefer the enabled button (Desktop reports unsaved changes that
+                // way); remember a disabled one so the caller can log "nothing to save".
+                if (button.Current.IsEnabled) return button;
+                disabled ??= button;
+            }
+            catch (ElementNotAvailableException)
+            {
+                continue;
+            }
+            catch
+            {
+                continue;
+            }
+        }
+
+        return disabled;
+    }
+
+    /// <summary>
     /// Opens the Publish dialog, reads every workspace shown in it, then closes
     /// the dialog. Throws with a user-facing message when Power BI is not running
     /// or the dialog cannot be read.

@@ -22,6 +22,7 @@ public sealed class ReportWorkspace : IDisposable
 
     private ReportEditHistory? _history;
     private readonly ReportFileWatcher _watcher;
+    private readonly PowerBiSyncService _powerBiSync = new();
     private string _signature = string.Empty;
     private DispatcherQueueTimer? _retryTimer;
     private int _retryCount;
@@ -103,6 +104,20 @@ public sealed class ReportWorkspace : IDisposable
         => ApplyEditCore(edit, managerWritesInternally, syncFirst);
 
     /// <summary>
+    /// Asks Power BI Desktop to save its open report so the author's unsaved edits
+    /// reach the .pbip project folder. Called when the app regains focus: the tools
+    /// read that folder, so without this they would show stale data. Coalesced and
+    /// off-thread; a save that lands triggers the file watcher to reload us.
+    /// </summary>
+    public void RequestPowerBiSave()
+    {
+        if (HasReport)
+        {
+            _powerBiSync.RequestSave();
+        }
+    }
+
+    /// <summary>
     /// Applies an in-memory edit and saves it, but deliberately skips the undo
     /// history commit. Use for temporary changes that are reverted within the
     /// same operation (for example swapping page visibility around a publish),
@@ -139,6 +154,16 @@ public sealed class ReportWorkspace : IDisposable
         _signature = ComputeSignature();
         Commit();
         RaiseChanged();
+
+        // Every user-facing metadata write funnels through here, so let Power BI
+        // Desktop pick the change up instead of leaving its "files changed
+        // externally" banner for the author to click. Coalesced and off-thread, so
+        // it never blocks the edit or the UI.
+        if (HasReport)
+        {
+            _powerBiSync.RequestApply();
+        }
+
         return result;
     }
 
@@ -166,6 +191,7 @@ public sealed class ReportWorkspace : IDisposable
 
     public void Dispose()
     {
+        _powerBiSync.Stop();
         _watcher.Dispose();
         _retryTimer?.Stop();
         _history?.Dispose();

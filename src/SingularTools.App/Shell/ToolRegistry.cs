@@ -40,6 +40,12 @@ public static class ToolRegistry
             title: "Publishing Groups",
             description: "Choose which pages each workspace sees when you publish",
             glyph: "\uE724", // Send
-            pageType: typeof(Tools.PublishingGroups.PublishingGroupsPage))
+            pageType: typeof(Tools.PublishingGroups.PublishingGroupsPage)),
+        new(
+            id: "sort-by-column",
+            title: "Sort by Column",
+            description: "Point text columns at their order columns so they sort logically",
+            glyph: "\uE8CB", // Sort
+            pageType: typeof(Tools.SortByColumn.SortByColumnPage))
     };
 }

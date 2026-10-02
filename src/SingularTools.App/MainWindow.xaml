@@ -58,6 +58,72 @@
             <Frame x:Name="ToolFrame" />
         </NavigationView>
 
+        <!--  Multi-report guard: blurs the whole tool area and blocks input  -->
+        <Grid
+            x:Name="MultiReportOverlay"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            Canvas.ZIndex="200"
+            Visibility="Collapsed">
+            <!--
+                The "blur" is an acrylic backdrop over the tool shell: WinUI renders
+                the content behind it through a blur + noise pass, which gives the
+                paused look without pulling in Win2D or hand-rolling a bitmap effect.
+            -->
+            <Grid.Background>
+                <AcrylicBrush
+                    AlwaysUseFallback="False"
+                    FallbackColor="#E60C0C0C"
+                    TintColor="#000000"
+                    TintOpacity="0.35" />
+            </Grid.Background>
+
+            <Border
+                MaxWidth="460"
+                Padding="28,24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusLarge}">
+                <StackPanel Spacing="{StaticResource SpaceL}">
+                    <Border
+                        Width="44"
+                        Height="44"
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="{StaticResource RadiusMedium}">
+                        <FontIcon
+                            FontSize="22"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE7BA;" />
+                    </Border>
+
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource ToolTitleTextStyle}"
+                        Text="Multiple Power BI reports are open"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource MutedCaptionTextStyle}"
+                        Text="Singular Tools can only work with one Power BI Desktop report at a time, so the tools are paused. Close the other report and this will clear by itself."
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        x:Name="MultiReportDetailText"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource MutedCaptionTextStyle}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!--  Non-blocking toast overlay: bottom-right, above all content  -->
         <StackPanel
             x:Name="ToastHost"

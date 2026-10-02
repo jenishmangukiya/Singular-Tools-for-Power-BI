@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="SingularTools_App.Tools.SortByColumn.SortByColumnPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:SingularTools_App.Tools.SortByColumn"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="Transparent" Padding="{StaticResource ToolPagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Row 0 · Model banner  -->
+        <Border Margin="0,0,0,10" Padding="16,12" Style="{StaticResource CardBorderStyle}">
+            <Grid ColumnSpacing="{StaticResource SpaceL}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    Width="36"
+                    Height="36"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    CornerRadius="{StaticResource RadiusMedium}">
+                    <FontIcon
+                        FontSize="18"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE8CB;" />
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{StaticResource SpaceXXS}">
+                    <TextBlock x:Name="ModelNameText" Style="{StaticResource RowTitleTextStyle}" Text="No semantic model found" />
+                    <TextBlock
+                        x:Name="ModelHintText"
+                        Style="{StaticResource RowSubtitleTextStyle}"
+                        Text="Open a Power BI project (.pbip) to sort its tables."
+                        TextWrapping="Wrap" />
+                    <StackPanel
+                        x:Name="PowerBiWarning"
+                        Orientation="Horizontal"
+                        Spacing="{StaticResource SpaceXS}"
+                        Visibility="Collapsed">
+                        <FontIcon
+                            FontSize="12"
+                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                            Glyph="&#xE7BA;" />
+                        <TextBlock
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="Changes are written to the model files on disk. If Power BI Desktop is open, the external change is applied for you after each apply."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Row 1 · Toolbar  -->
+        <Grid Grid.Row="1" Margin="2,0,2,10" ColumnSpacing="{StaticResource SpaceM}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text="Order column suffix:" />
+
+            <TextBox
+                x:Name="SuffixBox"
+                Grid.Column="1"
+                Width="120"
+                PlaceholderText="_ord"
+                KeyDown="SuffixBox_KeyDown"
+                ToolTipService.ToolTip="Columns ending with this text are paired with the column before it" />
+
+            <Button
+                x:Name="RefreshButton"
+                Grid.Column="2"
+                Click="RefreshButton_Click"
+                Style="{StaticResource ToolbarButtonStyle}"
+                ToolTipService.ToolTip="Find matching order columns again">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                    <TextBlock Text="Refresh" />
+                </StackPanel>
+            </Button>
+
+            <TextBlock
+                x:Name="PlanSummaryText"
+                Grid.Column="3"
+                Margin="4,0,0,0"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}" />
+
+            <Button
+                x:Name="UndoButton"
+                Grid.Column="4"
+                Click="UndoButton_Click"
+                IsEnabled="False"
+                Style="{StaticResource ToolbarButtonStyle}"
+                ToolTipService.ToolTip="Restore the model files changed by the last apply">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                    <FontIcon FontSize="14" Glyph="&#xE7A7;" />
+                    <TextBlock Text="Undo last apply" />
+                </StackPanel>
+            </Button>
+
+            <Button
+                x:Name="ApplyButton"
+                Grid.Column="5"
+                Click="ApplyButton_Click"
+                IsEnabled="False"
+                Style="{StaticResource AccentButtonStyle}"
+                ToolTipService.ToolTip="Write the selected sort-by columns to the model">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                    <FontIcon FontSize="14" Glyph="&#xE73E;" />
+                    <TextBlock x:Name="ApplyButtonText" Text="Apply sort orders" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!--  Row 2 · Tables  -->
+        <Grid Grid.Row="2">
+            <ScrollViewer x:Name="TablesScroll" Visibility="Collapsed">
+                <StackPanel>
+                    <ItemsControl x:Name="TablesItems" ItemsSource="{x:Bind Tables}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:TableGroupViewModel">
+                                <Border
+                                    Margin="0,0,0,10"
+                                    Padding="14,12"
+                                    Style="{StaticResource CardBorderStyle}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <Grid ColumnSpacing="{StaticResource SpaceM}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource SectionHeaderTextStyle}"
+                                                Text="{x:Bind TableName}" />
+
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource MutedCaptionTextStyle}"
+                                                Text="{x:Bind Summary, Mode=OneWay}" />
+
+                                            <Button
+                                                Grid.Column="2"
+                                                Click="TableAll_Click"
+                                                Style="{StaticResource ToolbarButtonStyle}"
+                                                ToolTipService.ToolTip="Select every pair in this table">
+                                                <TextBlock Text="All" />
+                                            </Button>
+
+                                            <Button
+                                                Grid.Column="3"
+                                                Click="TableNone_Click"
+                                                Style="{StaticResource ToolbarButtonStyle}"
+                                                ToolTipService.ToolTip="Deselect every pair in this table">
+                                                <TextBlock Text="None" />
+                                            </Button>
+                                        </Grid>
+
+                                        <Grid Grid.Row="1" Margin="8,8,8,2" Padding="0,0,4,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Column &#x2192; sorts by" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                HorizontalAlignment="Right"
+                                                Style="{StaticResource MutedCaptionTextStyle}"
+                                                Text="Apply" />
+                                        </Grid>
+
+                                        <ItemsControl Grid.Row="2" ItemsSource="{x:Bind Rows}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:PairRowViewModel">
+                                                    <Grid Margin="0,1" Padding="8,4" ColumnSpacing="{StaticResource SpaceM}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            Style="{StaticResource RowTitleTextStyle}"
+                                                            Text="{x:Bind BaseColumn}" />
+
+                                                        <FontIcon
+                                                            Grid.Column="1"
+                                                            VerticalAlignment="Center"
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                            Glyph="&#xE72A;" />
+
+                                                        <TextBlock
+                                                            Grid.Column="2"
+                                                            VerticalAlignment="Center"
+                                                            Style="{StaticResource MutedCaptionTextStyle}"
+                                                            Text="{x:Bind OrderColumn}" />
+
+                                                        <StackPanel
+                                                            Grid.Column="3"
+                                                            VerticalAlignment="Center"
+                                                            Orientation="Horizontal"
+                                                            Spacing="{StaticResource SpaceS}">
+                                                            <Border
+                                                                VerticalAlignment="Center"
+                                                                Style="{StaticResource BadgePillStyle}"
+                                                                Visibility="{x:Bind StatusVisibility, Mode=OneWay}">
+                                                                <TextBlock
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Style="{StaticResource BadgeTextStyle}"
+                                                                    Text="{x:Bind StatusText, Mode=OneWay}" />
+                                                            </Border>
+
+                                                            <Border
+                                                                Padding="2"
+                                                                VerticalAlignment="Center"
+                                                                ToolTipService.ToolTip="Calculated columns / DAX sort orders are not supported here, as they might create a circular dependency. Create this sort order directly in Power BI instead."
+                                                                Visibility="{x:Bind HintVisibility, Mode=OneWay}">
+                                                                <FontIcon
+                                                                    FontSize="14"
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Glyph="&#xE897;" />
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <ToggleSwitch
+                                                            Grid.Column="4"
+                                                            MinWidth="0"
+                                                            VerticalAlignment="Center"
+                                                            IsEnabled="{x:Bind IsToggleEnabled, Mode=OneWay}"
+                                                            IsOn="{x:Bind IsSelected, Mode=TwoWay}"
+                                                            OffContent=""
+                                                            OnContent="" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Expander
+                        x:Name="UnmatchedExpander"
+                        Margin="0,2,0,0"
+                        Visibility="Collapsed">
+                        <ItemsControl x:Name="UnmatchedItems" ItemsSource="{x:Bind Unmatched}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:UnmatchedViewModel">
+                                    <Grid Margin="0,1" Padding="8,3" ColumnSpacing="{StaticResource SpaceM}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource RowTitleTextStyle}" Text="{x:Bind Display}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Style="{StaticResource MutedCaptionTextStyle}"
+                                            Text="{x:Bind Reason}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!--  Status / empty state  -->
+            <StackPanel
+                x:Name="EmptyPanel"
+                MaxWidth="400"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{StaticResource SpaceM}"
+                Visibility="Collapsed">
+                <FontIcon
+                    x:Name="EmptyIcon"
+                    HorizontalAlignment="Center"
+                    FontSize="40"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xE8CB;" />
+                <TextBlock
+                    x:Name="EmptyTitle"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource ToolTitleTextStyle}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="EmptyMessage"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource MutedCaptionTextStyle}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="EmptyActionButton"
+                    HorizontalAlignment="Center"
+                    Margin="0,4,0,0"
+                    Click="EmptyActionButton_Click"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    Visibility="Collapsed" />
+            </StackPanel>
+        </Grid>
+
+        <!--  Row 3 · Footer  -->
+        <TextBlock
+            x:Name="FooterText"
+            Grid.Row="3"
+            Margin="4,10,4,0"
+            Style="{StaticResource MutedCaptionTextStyle}"
+            Text="Pairs a text column with a hidden numeric order column so it sorts logically."
+            TextWrapping="Wrap" />
+    </Grid>
+</Page>

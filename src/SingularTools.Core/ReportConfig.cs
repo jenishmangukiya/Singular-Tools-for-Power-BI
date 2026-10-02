@@ -27,6 +27,9 @@ public sealed class ReportConfig
     public const string GroupsKey = "groups";
     public const string PublishMultiFeature = "publishMulti";
     public const string WorkspacesKey = "workspaces";
+    public const string SortByColumnFeature = "sortByColumn";
+    public const string SuffixKey = "suffix";
+    public const string ExcludedKey = "excluded";
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -231,6 +234,42 @@ public sealed class ReportConfig
 
         section[WorkspacesKey] = array;
         SetFeatureSection(PublishMultiFeature, section);
+    }
+
+    /// <summary>Reads the order-column suffix remembered for this project (empty when unset).</summary>
+    public string GetSortByColumnSuffix()
+    {
+        if (FeatureSection(SortByColumnFeature) is not JsonObject section) return string.Empty;
+        return section[SuffixKey]?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    /// <summary>Remembers the order-column suffix for this project.</summary>
+    public void SetSortByColumnSuffix(string? suffix)
+    {
+        var section = FeatureSection(SortByColumnFeature) as JsonObject ?? new JsonObject();
+        section[SuffixKey] = (suffix ?? string.Empty).Trim();
+        SetFeatureSection(SortByColumnFeature, section);
+    }
+
+    /// <summary>Keys (table|baseColumn) the user switched off, so they survive a restart.</summary>
+    public List<string> GetSortByColumnExcluded()
+    {
+        if (FeatureSection(SortByColumnFeature) is not JsonObject section) return new List<string>();
+        return ReadPageIds(section[ExcludedKey] as JsonArray);
+    }
+
+    /// <summary>Writes the switched-off keys, preserving every other key in the section.</summary>
+    public void SetSortByColumnExcluded(IEnumerable<string> keys)
+    {
+        var section = FeatureSection(SortByColumnFeature) as JsonObject ?? new JsonObject();
+        var array = new JsonArray();
+        foreach (var key in keys ?? Array.Empty<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(key)) array.Add(key);
+        }
+
+        section[ExcludedKey] = array;
+        SetFeatureSection(SortByColumnFeature, section);
     }
 
     private int ReadSchemaVersion()

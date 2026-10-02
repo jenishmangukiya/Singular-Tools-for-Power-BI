@@ -1,0 +1,12 @@
+createOrReplace
+
+	ref table financials
+
+		column 'Discount Band_ord'
+			dataType: string
+			formatString: 0
+			lineageTag: a926fe13-96a8-4719-8297-ff1f391a178e
+			summarizeBy: count
+
+			annotation SummarizationSetBy = User
+

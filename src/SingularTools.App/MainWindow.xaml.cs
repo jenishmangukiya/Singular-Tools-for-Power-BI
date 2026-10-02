@@ -16,6 +16,18 @@ public sealed partial class MainWindow : Window
 {
     private IntPtr _hwnd = IntPtr.Zero;
 
+    /// <summary>How often the "more than one Power BI report" guard re-checks.</summary>
+    private static readonly TimeSpan ReportGuardInterval = TimeSpan.FromMilliseconds(1500);
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _reportGuardTimer;
+    private bool _multiReportBlocked;
+
+    /// <summary>Minimum spacing between focus-triggered Power BI saves.</summary>
+    private static readonly TimeSpan PowerBiFocusSaveCooldown = TimeSpan.FromSeconds(2);
+
+    private bool _wasActive;
+    private DateTime _lastPowerBiSaveUtc = DateTime.MinValue;
+
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -67,6 +79,7 @@ public sealed partial class MainWindow : Window
 
         Activated += MainWindow_Activated;
         Closed += MainWindow_Closed;
+        StartReportGuard();
         App.Log("MainWindow initialized.");
     }
 
@@ -133,6 +146,25 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
     {
+        // Coming back to the app is exactly when a second report may have appeared.
+        UpdateReportGuard();
+
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            _wasActive = false;
+            return;
+        }
+
+        // The author may have edited the open report in Power BI Desktop without
+        // saving. Persist those edits on focus gain so every tool reads current
+        // data; the file watcher reloads us once Desktop writes. Off-thread and
+        // coalesced with our own apply-external-changes passes.
+        if (!_wasActive)
+        {
+            _wasActive = true;
+            MaybeRequestPowerBiSave();
+        }
+
         if (!_hasInitializedPosition)
         {
             _hasInitializedPosition = true;
@@ -157,6 +189,28 @@ public sealed partial class MainWindow : Window
             // re-apply the icon here to make sure it appears in the taskbar too.
             ApplyAppIcon();
         }
+    }
+
+    /// <summary>
+    /// Saves Power BI Desktop's unsaved report edits when the app regains focus,
+    /// throttled so ordinary focus toggles do not hammer Desktop. Skipped while the
+    /// multi-report guard is up, since we cannot tell which report is meant.
+    /// </summary>
+    private void MaybeRequestPowerBiSave()
+    {
+        if (!App.Workspace.HasReport || _multiReportBlocked)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (now - _lastPowerBiSaveUtc < PowerBiFocusSaveCooldown)
+        {
+            return;
+        }
+
+        _lastPowerBiSaveUtc = now;
+        App.Workspace.RequestPowerBiSave();
     }
 
     private void ConfigureAppWindow()
@@ -234,6 +288,82 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        _reportGuardTimer?.Stop();
+        _reportGuardTimer = null;
+    }
+
+    // ---- Multiple Power BI reports guard ----------------------------------
+
+    /// <summary>
+    /// Polls how many Power BI Desktop reports are open. Singular Tools cannot tell
+    /// which report the author means when a second one is open alongside the one the
+    /// tool was launched from, so the whole UI is blurred out and blocked until it
+    /// goes back to a single report.
+    /// </summary>
+    private void StartReportGuard()
+    {
+        try
+        {
+            UpdateReportGuard();
+
+            _reportGuardTimer = DispatcherQueue.CreateTimer();
+            _reportGuardTimer.Interval = ReportGuardInterval;
+            _reportGuardTimer.IsRepeating = true;
+            _reportGuardTimer.Tick += (_, _) => UpdateReportGuard();
+            _reportGuardTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Report guard failed to start: {ex.Message}");
+        }
+    }
+
+    private void UpdateReportGuard()
+    {
+        int count;
+        try
+        {
+            count = PowerBiDetector.CountOpenPowerBiReports();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Report guard check failed: {ex.Message}");
+            return;
+        }
+
+        var blocked = count > 1;
+        if (blocked == _multiReportBlocked)
+        {
+            return;
+        }
+
+        _multiReportBlocked = blocked;
+        ApplyReportGuard(blocked, count);
+    }
+
+    private void ApplyReportGuard(bool blocked, int count)
+    {
+        try
+        {
+            if (!blocked)
+            {
+                MultiReportOverlay.Visibility = Visibility.Collapsed;
+                App.Log("Report guard cleared: back to a single Power BI report.");
+                return;
+            }
+
+            MultiReportDetailText.Text = $"{count} Power BI Desktop reports detected.";
+            MultiReportOverlay.Visibility = Visibility.Visible;
+            App.Log($"Report guard engaged: {count} Power BI reports open.");
+
+            // The overlay covers the app, but focus can still sit on the content
+            // behind it, so move it somewhere harmless.
+            MultiReportOverlay.Focus(FocusState.Programmatic);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Report guard overlay failed: {ex.Message}");
+        }
     }
 
     private void OnExternalChangeDetected(object? sender, EventArgs e)

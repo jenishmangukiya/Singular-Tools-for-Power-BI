@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "Demo PBI Report"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "8c9eaaa0-0e7a-4d79-82ee-39fe39ade183"
+  }
+}
