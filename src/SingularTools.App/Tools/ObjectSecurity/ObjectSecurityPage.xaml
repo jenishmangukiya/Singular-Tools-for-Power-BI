@@ -43,20 +43,25 @@
                         Style="{StaticResource RowSubtitleTextStyle}"
                         Text="Open a Power BI project (.pbip) to manage its roles."
                         TextWrapping="Wrap" />
-                    <StackPanel
+                    <Grid
                         x:Name="PowerBiWarning"
-                        Orientation="Horizontal"
-                        Spacing="{StaticResource SpaceXS}"
+                        ColumnSpacing="{StaticResource SpaceXS}"
                         Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
                         <FontIcon
+                            VerticalAlignment="Top"
                             FontSize="12"
                             Foreground="{ThemeResource SystemFillColorCautionBrush}"
                             Glyph="&#xE7BA;" />
                         <TextBlock
+                            Grid.Column="1"
                             Style="{StaticResource MutedCaptionTextStyle}"
                             Text="OLS is written to the model's role files on disk. If Power BI Desktop is open, the external change is applied for you after each apply."
                             TextWrapping="Wrap" />
-                    </StackPanel>
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>
@@ -209,17 +214,22 @@
                             Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
                             CornerRadius="{StaticResource RadiusMedium}"
                             Visibility="Collapsed">
-                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceM}">
+                            <Grid ColumnSpacing="{StaticResource SpaceM}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <FontIcon
                                     VerticalAlignment="Top"
                                     FontSize="16"
                                     Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                     Glyph="&#xE7BA;" />
                                 <TextBlock
+                                    Grid.Column="1"
                                     Style="{StaticResource MutedCaptionTextStyle}"
                                     Text="This role also applies row-level filters. OLS rules are stored alongside them in the same role — just note that a user who is also in another role combining RLS and OLS can hit query-time errors."
                                     TextWrapping="Wrap" />
-                            </StackPanel>
+                            </Grid>
                         </Border>
 
                         <!--  Validation  -->

@@ -23,6 +23,19 @@ internal sealed class PowerBiSyncService
     private bool _running;
     private bool _stopped;
     private TaskCompletionSource<bool>? _saveCompletion;
+    private DateTime _lastSaveCompletedUtc = DateTime.MinValue;
+
+    /// <summary>UTC time the most recent save/apply pass finished, even a no-op one.</summary>
+    public DateTime LastSaveCompletedUtc
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastSaveCompletedUtc;
+            }
+        }
+    }
 
     /// <summary>
     /// Queues a save of Desktop's current report. Returns immediately. Repeated
@@ -155,6 +168,10 @@ internal sealed class PowerBiSyncService
                 if (doSave || doApply)
                 {
                     CompleteSave(savedSomething || doApply);
+                    lock (_gate)
+                    {
+                        _lastSaveCompletedUtc = DateTime.UtcNow;
+                    }
                 }
             }
         }

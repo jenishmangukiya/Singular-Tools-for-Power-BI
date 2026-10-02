@@ -1,5 +1,9 @@
 role Untitled
 	modelPermission: read
 
+	tablePermission financials
+
+		columnPermission 'Gross Sales' = none
+
 	annotation PBI_Id = d4ba4629ecec465eba232a4e9ec3b465
 

@@ -23,11 +23,15 @@ public sealed partial class MainWindow : Window
     private bool _multiReportBlocked;
 
     /// <summary>Minimum spacing between focus-triggered Power BI saves.</summary>
-    private static readonly TimeSpan PowerBiFocusSaveCooldown = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan PowerBiFocusSaveCooldown = TimeSpan.FromSeconds(10);
+
+    /// <summary>Brief preemptions (our own save/overlay) don't count as the user leaving.</summary>
+    private static readonly TimeSpan MinDeactivationForSave = TimeSpan.FromMilliseconds(500);
 
     private bool _wasActive;
     private bool _startupSyncDone;
-    private DateTime _lastPowerBiSaveUtc = DateTime.MinValue;
+    private bool _syncInProgress;
+    private DateTime _lastDeactivatedUtc = DateTime.MinValue;
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -81,7 +85,7 @@ public sealed partial class MainWindow : Window
 
         Activated += MainWindow_Activated;
         Closed += MainWindow_Closed;
-        StartReportGuard();
+        // StartReportGuard(); // TEMP DISABLED for multi-report testing.
         App.Log("MainWindow initialized.");
     }
 
@@ -149,13 +153,24 @@ public sealed partial class MainWindow : Window
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
     {
         // Coming back to the app is exactly when a second report may have appeared.
-        UpdateReportGuard();
+        // UpdateReportGuard(); // TEMP DISABLED for multi-report testing.
 
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
+            _lastDeactivatedUtc = DateTime.UtcNow;
+
+            if (_syncInProgress)
+            {
+                App.Log("Window deactivated during startup sync — ignoring as user return.");
+                return;
+            }
+
+            App.Log("Window deactivated.");
             _wasActive = false;
             return;
         }
+
+        App.Log($"Window activated (wasActive={_wasActive}, startupSyncDone={_startupSyncDone}, syncInProgress={_syncInProgress}).");
 
         if (!_hasInitializedPosition)
         {
@@ -186,6 +201,19 @@ public sealed partial class MainWindow : Window
         {
             _wasActive = true;
 
+            if (_syncInProgress)
+            {
+                App.Log("Activation during startup sync — not treating as a user return.");
+                return;
+            }
+
+            var deactivatedFor = DateTime.UtcNow - _lastDeactivatedUtc;
+            if (_lastDeactivatedUtc != DateTime.MinValue && deactivatedFor < MinDeactivationForSave)
+            {
+                App.Log($"Brief deactivation ({deactivatedFor.TotalMilliseconds:0}ms) — skipping Power BI save.");
+                return;
+            }
+
             // First activation performs a gated "flush Desktop, then render" handshake
             // so the tools never show a stale report. Later focus gains keep the cheap
             // throttled save.
@@ -211,6 +239,7 @@ public sealed partial class MainWindow : Window
         var service = new StartupSyncService();
         var runSave = PowerBiPublisher.IsPowerBiRunning() && PowerBiDetector.CountOpenPowerBiReports() <= 1;
         var overlayShown = false;
+        _syncInProgress = true;
 
         try
         {
@@ -220,7 +249,9 @@ public sealed partial class MainWindow : Window
                 overlayShown = true;
             }
 
+            App.Log("Startup sync: flushing Power BI Desktop.");
             var result = await service.RunAsync(EnsureReportLoaded);
+            App.Log($"Startup sync: handshake finished (ranSave={result.RanSave}, wroteFile={result.WroteFile}, timedOut={result.TimedOut}).");
 
             if (result.TimedOut)
             {
@@ -239,6 +270,8 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            _syncInProgress = false;
+
             if (overlayShown)
             {
                 HideStartupOverlay();
@@ -291,16 +324,24 @@ public sealed partial class MainWindow : Window
     {
         if (!App.Workspace.HasReport || _multiReportBlocked)
         {
+            App.Log("Focus save skipped: no report or multi-report guard.");
+            return;
+        }
+
+        if (ActiveTool is IToolPage tool && tool.SkipAutoPowerBiSync)
+        {
+            App.Log($"Focus save skipped: active tool '{tool.ToolId}' drives Desktop itself.");
             return;
         }
 
         var now = DateTime.UtcNow;
-        if (now - _lastPowerBiSaveUtc < PowerBiFocusSaveCooldown)
+        if (now - App.Workspace.LastPowerBiSyncUtc < PowerBiFocusSaveCooldown)
         {
+            App.Log($"Focus save skipped: last sync {(now - App.Workspace.LastPowerBiSyncUtc).TotalSeconds:0}s ago (cooldown {PowerBiFocusSaveCooldown.TotalSeconds:0}s).");
             return;
         }
 
-        _lastPowerBiSaveUtc = now;
+        App.Log("Focus save: requesting Power BI Desktop save.");
         App.Workspace.RequestPowerBiSave();
     }
 

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Automation;
@@ -58,6 +60,9 @@ public enum PublishStage
 /// </summary>
 internal static class PowerBiPublisher
 {
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
     private const int DialogWaitMs = 20000;
     private const int PublishTimeoutMs = 180000;
 
@@ -787,6 +792,99 @@ internal static class PowerBiPublisher
         }
     }
 
+    /// <summary>
+    /// Count of top-level workspace rows in the new Publish dialog. Returns null
+    /// when the old "Workspaces" list shape is present instead.
+    /// </summary>
+    private static IReadOnlyList<AutomationElement>? FindNewStyleWorkspaceItems(AutomationElement dialog)
+    {
+        AutomationElement? anchor = null;
+        try
+        {
+            anchor = dialog.FindAll(TreeScope.Descendants, Condition.TrueCondition)
+                .Cast<AutomationElement>()
+                .FirstOrDefault(e => string.Equals(GetName(e), "My workspace", StringComparison.OrdinalIgnoreCase));
+        }
+        catch { }
+
+        if (anchor == null) return null;
+
+        // Walk up to the containing list so we only read the workspace column,
+        // not workspace names that appear elsewhere (e.g. in the right pane).
+        AutomationElement? scope = null;
+        for (var parent = TreeWalker.ControlViewWalker.GetParent(anchor); parent != null;
+             parent = TreeWalker.ControlViewWalker.GetParent(parent))
+        {
+            var ct = parent.Current.ControlType;
+            if (ct == ControlType.List || ct == ControlType.DataGrid || ct == ControlType.Tree)
+            {
+                scope = parent;
+                break;
+            }
+        }
+
+        scope ??= TreeWalker.ControlViewWalker.GetParent(anchor) ?? anchor;
+
+        var items = new List<AutomationElement>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            foreach (AutomationElement e in scope.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+            {
+                var name = GetName(e);
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                if (string.Equals(name, "All", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!IsRealWorkspace(name)) continue;
+
+                // Deduplicate: a row, its text block and any interior label can all
+                // expose the same Name, and we only need one element per workspace.
+                if (seen.Add(name))
+                {
+                    items.Add(e);
+                }
+            }
+        }
+        catch { }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Climbs from a matched node to the nearest row-like element that is most
+    /// likely to carry the selection/invoke pattern in the new dialog.
+    /// </summary>
+    private static AutomationElement ResolveWorkspaceRow(AutomationElement element)
+    {
+        static bool IsRowish(ControlType ct) =>
+            ct == ControlType.ListItem || ct == ControlType.TreeItem ||
+            ct == ControlType.DataItem || ct == ControlType.Custom ||
+            ct == ControlType.Group || ct == ControlType.Button;
+
+        AutomationElement candidate = element;
+        for (var parent = TreeWalker.ControlViewWalker.GetParent(element); parent != null;
+             parent = TreeWalker.ControlViewWalker.GetParent(parent))
+        {
+            ControlType ct;
+            try { ct = parent.Current.ControlType; }
+            catch { break; }
+
+            if (IsRowish(ct))
+            {
+                candidate = parent;
+                break;
+            }
+
+            // Stop once we reach the list container itself: the row was the
+            // parent we were looking for, do not select the whole list.
+            if (ct == ControlType.List || ct == ControlType.DataGrid || ct == ControlType.Tree)
+            {
+                break;
+            }
+        }
+
+        return candidate;
+    }
+
     private static IReadOnlyList<string> EnumerateWorkspaces(AutomationElement dialog)
     {
         var names = new List<string>();
@@ -801,6 +899,25 @@ internal static class PowerBiPublisher
             if (IsRealWorkspace(name) && !names.Contains(name))
             {
                 names.Add(name);
+            }
+        }
+
+        if (names.Count == 0)
+        {
+            // New publish dialog (folders preview): workspaces are the rows of the
+            // left navigation pane, not a list named 'Workspaces'.
+            var items = FindNewStyleWorkspaceItems(dialog);
+            if (items != null)
+            {
+                App.Log($"New-style publish dialog detected ({items.Count} workspace candidates).");
+                foreach (var item in items)
+                {
+                    var name = GetName(item);
+                    if (!names.Contains(name))
+                    {
+                        names.Add(name);
+                    }
+                }
             }
         }
 
@@ -827,15 +944,16 @@ internal static class PowerBiPublisher
         error = null;
 
         var list = FindByTypeAndName(dialog, ControlType.List, "Workspaces") ?? dialog;
-        var item = FindByTypeAndName(list, ControlType.ListItem, workspaceName);
+        AutomationElement? item = FindByTypeAndName(list, ControlType.ListItem, workspaceName);
+
         if (item == null)
         {
-            error = "No matching workspace item.";
-            return false;
+            // We reach here only when the classic 'Workspaces' list path failed, which is the new dialog.
+            // Use the search box to filter to the exact workspace, then click its button directly.
+            return SelectWorkspaceViaSearch(dialog, workspaceName, out error);
         }
 
-        // Prefer the semantic selection; Angular Material lists usually honor it,
-        // but fall back to a click (Invoke) if the Select button stays disabled.
+        // Classic dialog path: semantic selection on ListItem, invoke fallback.
         if (item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var sel))
         {
             ((SelectionItemPattern)sel).Select();
@@ -846,6 +964,74 @@ internal static class PowerBiPublisher
         {
             ((InvokePattern)inv).Invoke();
             Thread.Sleep(250);
+        }
+
+        App.Log($"SelectWorkspace: targeted classic item for '{workspaceName}'.");
+        return true;
+    }
+
+    private static bool SelectWorkspaceViaSearch(AutomationElement dialog, string workspaceName, out string? error)
+    {
+        error = null;
+
+        var search = FindByTypeAndName(dialog, ControlType.Edit, "Search")
+                     ?? throw new InvalidOperationException("No search box in the publish dialog.");
+
+        // Filter the left pane.
+        try
+        {
+            if (search.TryGetCurrentPattern(ValuePattern.Pattern, out var vpObj))
+            {
+                ((ValuePattern)vpObj).SetValue(workspaceName);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Search SetValue failed: {ex.Message}");
+        }
+
+        Thread.Sleep(600);
+
+        // The row matching this workspace should now be first.
+        AutomationElement? filtered = null;
+        try
+        {
+            filtered = dialog.FindAll(TreeScope.Descendants,
+                          new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(e => string.Equals(GetName(e), workspaceName, StringComparison.OrdinalIgnoreCase)
+                                     || GetName(e).Contains(workspaceName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch { }
+
+        if (filtered == null)
+        {
+            error = $"Workspace '{workspaceName}' was not found after filtering.";
+            return false;
+        }
+
+        var owner = App.CurrentMainWindow;
+        try { owner?.AppWindow?.Hide(); }
+        catch { }
+        Thread.Sleep(150);
+
+        try
+        {
+            var hwnd = GetNativeWindowHandle(dialog);
+            if (hwnd != IntPtr.Zero)
+            {
+                SetForegroundWindow(hwnd);
+                Thread.Sleep(150);
+            }
+
+            App.Log($"SelectWorkspace: physical click for '{GetName(filtered)}'.");
+            TryClickAtCenter(filtered);
+            Thread.Sleep(300);
+        }
+        finally
+        {
+            try { owner?.AppWindow?.Show(); }
+            catch { }
         }
 
         return true;

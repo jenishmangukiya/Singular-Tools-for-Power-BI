@@ -14,6 +14,7 @@ public sealed partial class HomePage : Page, IToolPage
     public string Description => "Getting started with Singular Tools";
     public string Glyph => "\uE80F";
 
+    private readonly HomeViewModel _viewModel = new();
     private bool _subscribed;
 
     public HomePage()
@@ -27,7 +28,7 @@ public sealed partial class HomePage : Page, IToolPage
     public void OnActivated()
     {
         PopulateTools();
-        UpdateReportStatus();
+        UpdateReportBand();
     }
 
     private void HomePage_Loaded(object sender, RoutedEventArgs e)
@@ -35,7 +36,7 @@ public sealed partial class HomePage : Page, IToolPage
         PopulateTools();
         Subscribe();
         TryDiscoverReport();
-        UpdateReportStatus();
+        UpdateReportBand();
     }
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
@@ -54,15 +55,87 @@ public sealed partial class HomePage : Page, IToolPage
         _subscribed = true;
     }
 
-    private void Workspace_Changed(object? sender, EventArgs e) => UpdateReportStatus();
+    private void Workspace_Changed(object? sender, EventArgs e)
+    {
+        PopulateTools();
+        UpdateReportBand();
+    }
 
+    /// <summary>
+    /// Rebuilds the grouped card grid. Cheap enough to do wholesale: there are only
+    /// a handful of tools, and re-projecting keeps every card's readiness badge in
+    /// step with the current report.
+    /// </summary>
     private void PopulateTools()
     {
-        if (ToolsGrid == null) return;
+        if (SectionsRepeater == null) return;
 
-        ToolsGrid.ItemsSource = ToolRegistry.Tools
-            .Where(t => !string.Equals(t.Id, ToolId, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        SectionsRepeater.ItemsSource = _viewModel.BuildSections(
+            excludeToolId: ToolId,
+            hasReport: App.Workspace.HasReport,
+            hasSemanticModel: App.Workspace.HasSemanticModel,
+            pageCount: App.Workspace.Manager.Pages.Count);
+    }
+
+    private void UpdateReportBand()
+    {
+        if (ReportNameText == null) return;
+
+        var hasReport = App.Workspace.HasReport;
+        var pages = App.Workspace.Manager.Pages;
+
+        if (hasReport)
+        {
+            ReportNameText.Text = App.Workspace.ReportName;
+            ReportPathText.Text = App.Workspace.ReportPath;
+        }
+        else
+        {
+            ReportNameText.Text = "No report loaded";
+            ReportPathText.Text = "Open a Power BI project (.pbip) folder to get started.";
+        }
+
+        UpdateReportButton(hasReport);
+
+        SetChip(PagesChip, PagesChipText, hasReport,
+            pages.Count == 1 ? "1 page" : $"{pages.Count} pages");
+        SetChip(ModelChip, ModelChipText, hasReport,
+            App.Workspace.HasSemanticModel ? "Semantic model linked" : "No semantic model");
+
+        // Always shown: it tells the author whether live sync with Desktop is possible.
+        SetChip(DesktopChip, DesktopChipText, visible: true,
+            PowerBiPublisher.IsPowerBiRunning()
+                ? "Power BI Desktop running"
+                : "Power BI Desktop not detected");
+    }
+
+    /// <summary>
+    /// When Power BI Desktop launched us from its External Tools ribbon, the open
+    /// report is pinned to that model: Power BI owns it, so offering to switch it
+    /// would only produce a second, unsynced session. The button is disabled rather
+    /// than hidden so the band keeps its layout, and the tooltip says why.
+    /// </summary>
+    private void UpdateReportButton(bool hasReport)
+    {
+        if (App.LaunchedFromPowerBi)
+        {
+            OpenReportButton.IsEnabled = false;
+            OpenReportButtonText.Text = "Report set by Power BI";
+            ToolTipService.SetToolTip(
+                OpenReportButton,
+                "Opened from Power BI Desktop, so the report can't be switched here.");
+            return;
+        }
+
+        OpenReportButton.IsEnabled = true;
+        OpenReportButtonText.Text = hasReport ? "Switch report" : "Open report";
+        ToolTipService.SetToolTip(OpenReportButton, null);
+    }
+
+    private static void SetChip(Border chip, TextBlock text, bool visible, string value)
+    {
+        chip.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        text.Text = value;
     }
 
     private void TryDiscoverReport()
@@ -105,32 +178,15 @@ public sealed partial class HomePage : Page, IToolPage
             ToastService.Show($"Could not open report: {ex.Message}", ToastSeverity.Error);
         }
 
-        UpdateReportStatus();
+        PopulateTools();
+        UpdateReportBand();
     }
 
-    private void UpdateReportStatus()
+    private void ToolCard_Click(object sender, RoutedEventArgs e)
     {
-        if (ReportNameText == null) return;
-
-        if (App.Workspace.HasReport)
+        if (sender is FrameworkElement { Tag: string toolId })
         {
-            ReportNameText.Text = App.Workspace.ReportName;
-            ReportHintText.Text = App.Workspace.ReportPath;
-            ReportPathText.Text = App.Workspace.ReportName;
-        }
-        else
-        {
-            ReportNameText.Text = "No report loaded";
-            ReportHintText.Text = "Open a Power BI project (.pbip) folder to manage its report pages.";
-            ReportPathText.Text = "No report loaded";
-        }
-    }
-
-    private void ToolsGrid_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is ToolDescriptor tool)
-        {
-            App.CurrentMainWindow?.NavigateToTool(tool.Id);
+            App.CurrentMainWindow?.NavigateToTool(toolId);
         }
     }
 }

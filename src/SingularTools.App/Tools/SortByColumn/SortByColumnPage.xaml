@@ -43,20 +43,25 @@
                         Style="{StaticResource RowSubtitleTextStyle}"
                         Text="Open a Power BI project (.pbip) to sort its tables."
                         TextWrapping="Wrap" />
-                    <StackPanel
+                    <Grid
                         x:Name="PowerBiWarning"
-                        Orientation="Horizontal"
-                        Spacing="{StaticResource SpaceXS}"
+                        ColumnSpacing="{StaticResource SpaceXS}"
                         Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
                         <FontIcon
+                            VerticalAlignment="Top"
                             FontSize="12"
                             Foreground="{ThemeResource SystemFillColorCautionBrush}"
                             Glyph="&#xE7BA;" />
                         <TextBlock
+                            Grid.Column="1"
                             Style="{StaticResource MutedCaptionTextStyle}"
                             Text="Changes are written to the model files on disk. If Power BI Desktop is open, the external change is applied for you after each apply."
                             TextWrapping="Wrap" />
-                    </StackPanel>
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>

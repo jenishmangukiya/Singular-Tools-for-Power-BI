@@ -187,7 +187,8 @@
                         DragItemsCompleted="PagesListView_DragItemsCompleted"
                         KeyDown="PagesListView_KeyDown"
                         SelectionChanged="PagesListView_SelectionChanged"
-                        SelectionMode="Single">
+                        SelectionMode="Single"
+                        ContextRequested="PagesListView_ContextRequested">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -198,6 +199,7 @@
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:PageItemViewModel">
                             <Grid
+                                x:Name="RowGrid"
                                 Margin="0,2"
                                 Padding="8,6"
                                 AutomationProperties.Name="{x:Bind DisplayName}"
@@ -210,6 +212,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
@@ -229,10 +232,17 @@
                                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
-                                        <MenuFlyoutItem Click="ContextMenu_MoveToTop_Click" Text="Move to top (Ctrl+Shift+Up)">
+                                        <MenuFlyoutItem Click="MoveUp_Click" Text="Move up">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74A;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="MoveDown_Click" Text="Move down">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74B;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Click="ContextMenu_MoveToTop_Click" Text="Move to top">
                                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
-                                        <MenuFlyoutItem Click="ContextMenu_MoveToBottom_Click" Text="Move to bottom (Ctrl+Shift+Down)">
+                                        <MenuFlyoutItem Click="ContextMenu_MoveToBottom_Click" Text="Move to bottom">
                                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE896;" /></MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
@@ -244,6 +254,7 @@
 
                                 <!--  Drag grip  -->
                                 <StackPanel
+                                    x:Name="GripHandle"
                                     Grid.Column="0"
                                     VerticalAlignment="Center"
                                     HorizontalAlignment="Center"
@@ -274,23 +285,21 @@
                                         Text="{x:Bind OrderIndexText}" />
                                 </Border>
 
-                                <!--  Page icon tile  -->
-                                <Border
-                                    Grid.Column="2"
-                                    Width="30"
-                                    Height="30"
-                                    VerticalAlignment="Center"
-                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="{StaticResource RadiusSmall}">
-                                    <FontIcon FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE8A9;" />
-                                </Border>
-
                                 <!--  Name / inline rename  -->
                                 <StackPanel Grid.Column="3" Margin="2,0,8,0" VerticalAlignment="Center">
-                                    <TextBlock
-                                        Style="{StaticResource RowTitleTextStyle}"
-                                        Text="{x:Bind DisplayName}"
-                                        Visibility="{x:Bind NameVisibility, Mode=OneWay}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceXS}" Visibility="Visible">
+                                        <FontIcon
+                                            FontSize="12"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Glyph="&#xED1A;"
+                                            ToolTipService.ToolTip="Hidden page"
+                                            Visibility="{x:Bind HiddenEyeVisibility, Mode=OneWay}" />
+                                        <TextBlock
+                                            Style="{StaticResource RowTitleTextStyle}"
+                                            Text="{x:Bind DisplayName}"
+                                            Visibility="{x:Bind NameVisibility, Mode=OneWay}" />
+                                    </StackPanel>
                                     <TextBox
                                         x:Name="RenameBox"
                                         MinHeight="0"
@@ -336,8 +345,22 @@
                                     </Border>
                                 </StackPanel>
 
+                                <!--  Quick actions  -->
+                                <Button
+                                    x:Name="DeleteBtn"
+                                    Grid.Column="6"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Delete page"
+                                    Style="{StaticResource IconButtonStyle}"
+                                    Tag="{x:Bind Id}"
+                                    Click="ContextMenu_Delete_Click"
+                                    ToolTipService.ToolTip="Delete page (Del)">
+                                    <FontIcon FontSize="13" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Glyph="&#xE74D;" />
+                                </Button>
+
                                 <!--  Overflow actions  -->
                                 <Button
+                                    x:Name="OverflowBtn"
                                     Grid.Column="5"
                                     VerticalAlignment="Center"
                                     AutomationProperties.Name="More actions"
@@ -357,14 +380,15 @@
                                             <MenuFlyoutItem Click="ContextMenu_Duplicate_Click" Text="Duplicate (Ctrl+D)">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
-                                            <MenuFlyoutItem Click="MoveUp_Click" Text="Move up (Alt+Up)">
-                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74A;" /></MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutItem Click="MoveDown_Click" Text="Move down (Alt+Down)">
-                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74B;" /></MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
                                             <MenuFlyoutItem Click="ContextMenu_ToggleHide_Click" Text="Toggle hidden / visible">
                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem Click="MoveUp_Click" Text="Move up">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74A;" /></MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem Click="MoveDown_Click" Text="Move down">
+                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74B;" /></MenuFlyoutItem.Icon>
                                             </MenuFlyoutItem>
                                             <MenuFlyoutSeparator />
                                             <MenuFlyoutItem Click="ContextMenu_MoveToTop_Click" Text="Move to top">

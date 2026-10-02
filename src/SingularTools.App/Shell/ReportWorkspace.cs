@@ -46,6 +46,14 @@ public sealed class ReportWorkspace : IDisposable
 
     public string ReportPath => Manager.ReportFolderPath;
 
+    /// <summary>
+    /// True when a sibling semantic model (<c>.SemanticModel</c> holding TMDL tables)
+    /// was found for the open report. Resolved once when the report is opened or
+    /// reloaded, so the Home launcher can show model-dependent tools' state without
+    /// touching disk on every refresh.
+    /// </summary>
+    public bool HasSemanticModel => !string.IsNullOrEmpty(_modelFolder);
+
     /// <summary>Raised whenever the active report is opened, reloaded or edited.</summary>
     public event EventHandler? Changed;
 
@@ -129,6 +137,9 @@ public sealed class ReportWorkspace : IDisposable
             _powerBiSync.RequestSave();
         }
     }
+
+    /// <summary>UTC time any Power BI sync pass (save or apply) last finished.</summary>
+    public DateTime LastPowerBiSyncUtc => _powerBiSync.LastSaveCompletedUtc;
 
     /// <summary>
     /// Asks Power BI Desktop to save and returns a task whose result is true when a

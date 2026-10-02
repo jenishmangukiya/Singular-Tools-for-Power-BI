@@ -4,7 +4,7 @@
       "rules": [
         {
           "value": "2014",
-          "hex": "#118DFF",
+          "hex": "#F3F3F3",
           "scope": "report"
         },
         {
@@ -31,6 +31,11 @@
           "value": "Jenish Mangukiya is signed in",
           "hex": "#1D2B32",
           "scope": "report"
+        },
+        {
+          "value": "Midmarket",
+          "hex": "#E044A7",
+          "scope": "report"
         }
       ]
     },
@@ -39,9 +44,7 @@
         {
           "name": "My WS",
           "visiblePageIds": [
-            "6ce61a33dfeca0131c91",
-            "ddf21251aaa0ebd99de1",
-            "127464940031610c0bc4"
+            "6ce61a33dfeca0131c91"
           ],
           "workspaceNames": [
             "My workspace"
@@ -50,12 +53,9 @@
         {
           "name": "EXtra",
           "visiblePageIds": [
-            "6ce61a33dfeca0131c91",
-            "03d23146c353b39f1666",
-            "127464940031610c0bc4",
-            "ddf21251aaa0ebd99de1",
             "62703fb0a0b7ad3cdbcc",
-            "421308d274e5b5952b47"
+            "421308d274e5b5952b47",
+            "6ce61a33dfeca0131c91"
           ],
           "workspaceNames": [
             "My workspace",

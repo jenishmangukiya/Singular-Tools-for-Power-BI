@@ -105,6 +105,7 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
                                     <Grid.ContextFlyout>
@@ -144,6 +145,35 @@
                                         <TextBlock Style="{StaticResource RowTitleTextStyle}" Text="{x:Bind Name, Mode=OneWay}" />
                                         <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="{x:Bind Summary, Mode=OneWay}" />
                                     </StackPanel>
+
+                                    <Button
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="More actions"
+                                        Style="{StaticResource IconButtonStyle}"
+                                        ToolTipService.ToolTip="More actions">
+                                        <FontIcon FontSize="12" Glyph="&#xE712;" />
+                                        <Button.Flyout>
+                                            <MenuFlyout>
+                                                <MenuFlyoutItem Click="GroupRename_Click" Text="Rename">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE8AC;" />
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                                <MenuFlyoutItem Click="GroupDuplicate_Click" Text="Duplicate">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE8C8;" />
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                                <MenuFlyoutSeparator />
+                                                <MenuFlyoutItem Click="GroupDelete_Click" Text="Delete">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Foreground="{ThemeResource SystemFillColorCriticalBrush}" Glyph="&#xE74D;" />
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                            </MenuFlyout>
+                                        </Button.Flyout>
+                                    </Button>
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -183,15 +213,11 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <StackPanel Margin="16,14,16,8" Spacing="{StaticResource SpaceXXS}">
-                            <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Group name" />
-                            <TextBox
-                                x:Name="GroupNameBox"
-                                MaxWidth="380"
-                                HorizontalAlignment="Left"
-                                PlaceholderText="e.g. Client A – External"
-                                TextChanged="GroupNameBox_TextChanged" />
-                        </StackPanel>
+                        <TextBlock
+                            x:Name="HeaderNameText"
+                            Margin="16,14,16,8"
+                            Style="{StaticResource RowTitleTextStyle}"
+                            Text="Group" />
 
                         <Grid Grid.Row="1" Margin="16,0,16,8" ColumnSpacing="{StaticResource SpaceS}">
                             <Grid.ColumnDefinitions>

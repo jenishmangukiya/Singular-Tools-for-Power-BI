@@ -26,6 +26,9 @@ public class PageItemViewModel : INotifyPropertyChanged
     public Visibility ActiveBadgeVisibility => IsActive ? Visibility.Visible : Visibility.Collapsed;
     public Visibility HiddenBadgeVisibility => IsHidden ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>Crossed-eye marker ahead of the name; falls back while the rename box owns the row.</summary>
+    public Visibility HiddenEyeVisibility => IsHidden && !_isEditing ? Visibility.Visible : Visibility.Collapsed;
+
     private bool _isEditing;
     public bool IsEditing
     {
@@ -37,6 +40,7 @@ public class PageItemViewModel : INotifyPropertyChanged
             Raise(nameof(IsEditing));
             Raise(nameof(NameVisibility));
             Raise(nameof(EditVisibility));
+            Raise(nameof(HiddenEyeVisibility));
         }
     }
 
@@ -83,6 +87,12 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     private readonly ObservableCollection<PageItemViewModel> _items = new();
     private bool _suppressNavigation;
     private bool _pendingRefresh;
+
+    /// <summary>True while the Go-to-page toggle is on: selection drives Desktop instead of editing.</summary>
+    public bool IsGoToPageMode => GoToPageBtn?.IsChecked == true;
+
+    /// <summary>Go-to-page drives Desktop itself, so the focus-regain UIA save is skipped.</summary>
+    public bool SkipAutoPowerBiSync => IsGoToPageMode;
 
     public ReportPagesManagerPage()
     {
@@ -181,6 +191,26 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
         _suppressNavigation = false;
         UpdateEmptyStates();
+        WireGripCursors();
+    }
+
+    /// <summary>Gives every realized drag grip the hand cursor (idempotent per container).</summary>
+    private void WireGripCursors()
+    {
+        foreach (var item in _items)
+        {
+            if (PagesListView.ContainerFromItem(item) is not DependencyObject container) continue;
+            if (FindDescendant<StackPanel>(container, "GripHandle") is not StackPanel grip) continue;
+
+            if (grip.Tag as string != "cursor-wired")
+            {
+                grip.Tag = "cursor-wired";
+                grip.PointerMoved += (_, _) => NativeInput.SetHandCursor();
+                grip.PointerExited += (_, _) => NativeInput.SetArrowCursor();
+            }
+
+            grip.Visibility = IsGoToPageMode ? Visibility.Collapsed : Visibility.Visible;
+        }
     }
 
     private void UpdateEmptyStates()
@@ -204,6 +234,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void ExecuteSort(SortMode mode, string message)
     {
+        if (IsGoToPageMode) return;
+
         App.Workspace.ApplyEdit(m => m.SortPages(mode));
         RefreshList();
         ShowStatus(InfoBarSeverity.Success, message);
@@ -220,21 +252,21 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     private void UpdateHistoryButtons()
     {
         var history = App.Workspace.History;
-        if (UndoButton != null) UndoButton.IsEnabled = history?.CanUndo == true;
-        if (RedoButton != null) RedoButton.IsEnabled = history?.CanRedo == true;
+        if (UndoButton != null) UndoButton.IsEnabled = !IsGoToPageMode && history?.CanUndo == true;
+        if (RedoButton != null) RedoButton.IsEnabled = !IsGoToPageMode && history?.CanRedo == true;
     }
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
         var history = App.Workspace.History;
-        if (history == null || !history.CanUndo) return;
+        if (IsGoToPageMode || history == null || !history.CanUndo) return;
         ApplySnapshot(history.Undo(), "Undid the last change.");
     }
 
     private void Redo_Click(object sender, RoutedEventArgs e)
     {
         var history = App.Workspace.History;
-        if (history == null || !history.CanRedo) return;
+        if (IsGoToPageMode || history == null || !history.CanRedo) return;
         ApplySnapshot(history.Redo(), "Redid the last change.");
     }
 
@@ -354,14 +386,26 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void PagesListView_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var isAlt = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Menu) & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
         var isCtrl = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
-        var isShift = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
 
         var selected = PagesListView.SelectedItem as PageItemViewModel;
 
         // While an inline rename editor is open, let it own the keyboard.
         if (_items.Any(i => i.IsEditing)) return;
+
+        if (IsGoToPageMode)
+        {
+            // In go-to-page mode the list is read-only: only navigation keys act.
+            if (e.Key == Windows.System.VirtualKey.Enter)
+            {
+                if (PagesListView.SelectedItem is PageItemViewModel nav)
+                {
+                    NavigateToOpenReport(nav);
+                }
+                e.Handled = true;
+            }
+            return;
+        }
 
         if (isCtrl && e.Key == Windows.System.VirtualKey.Z)
         {
@@ -414,30 +458,12 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
             return;
         }
 
-        if (isAlt && e.Key == Windows.System.VirtualKey.Up)
-        {
-            MoveUp(selected.Id);
-            e.Handled = true;
-        }
-        else if (isAlt && e.Key == Windows.System.VirtualKey.Down)
-        {
-            MoveDown(selected.Id);
-            e.Handled = true;
-        }
-        else if (isCtrl && isShift && e.Key == Windows.System.VirtualKey.Up)
-        {
-            MoveToTop(selected.Id);
-            e.Handled = true;
-        }
-        else if (isCtrl && isShift && e.Key == Windows.System.VirtualKey.Down)
-        {
-            MoveToBottom(selected.Id);
-            e.Handled = true;
-        }
     }
 
     private void PagesListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
+        if (IsGoToPageMode) return;
+
         var orderedIds = _items.Select(i => i.Id).ToList();
         if (orderedIds.Count > 0)
         {
@@ -449,6 +475,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void OverflowButton_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         if (sender is Button btn && btn.Tag is string id)
         {
             var item = _items.FirstOrDefault(i => i.Id == id);
@@ -461,6 +488,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void DuplicatePage(string id)
     {
+        if (IsGoToPageMode) return;
         var newPage = App.Workspace.ApplyEditWithResult(m => m.DuplicatePage(id), managerWritesInternally: true);
         if (newPage != null)
         {
@@ -478,6 +506,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private async void DeletePage(string id)
     {
+        if (IsGoToPageMode) return;
         if (_reportManager.Pages.Count <= 1)
         {
             ShowStatus(InfoBarSeverity.Warning, "Cannot delete the only remaining page in the report.", autoDismiss: false);
@@ -543,6 +572,12 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
         if (selected == null || selected.IsEditing) return;
 
+        if (IsGoToPageMode)
+        {
+            NavigateToOpenReport(selected);
+            return;
+        }
+
         ActivatePage(selected);
     }
 
@@ -564,12 +599,14 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveUp_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) MoveUp(item.Id);
     }
 
     private void MoveDown_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) MoveDown(item.Id);
     }
@@ -586,6 +623,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void ContextMenu_SetActive_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item == null) return;
 
@@ -596,18 +634,21 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void ContextMenu_Rename_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) BeginRename(item);
     }
 
     private void ContextMenu_Duplicate_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) DuplicatePage(item.Id);
     }
 
     private void ContextMenu_ToggleHide_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item == null) return;
         App.Workspace.ApplyEdit(m => m.TogglePageVisibility(item.Id));
@@ -617,24 +658,28 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void ContextMenu_MoveToTop_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) MoveToTop(item.Id);
     }
 
     private void ContextMenu_MoveToBottom_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) MoveToBottom(item.Id);
     }
 
     private void ContextMenu_Delete_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGoToPageMode) return;
         var item = GetContextItem(sender);
         if (item != null) DeletePage(item.Id);
     }
 
     private void MoveUp(string id)
     {
+        if (IsGoToPageMode) return;
         App.Workspace.ApplyEdit(m => m.MovePageUp(id));
         RefreshList();
         ReselectId(id);
@@ -643,6 +688,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveDown(string id)
     {
+        if (IsGoToPageMode) return;
         App.Workspace.ApplyEdit(m => m.MovePageDown(id));
         RefreshList();
         ReselectId(id);
@@ -651,6 +697,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveToTop(string id)
     {
+        if (IsGoToPageMode) return;
         App.Workspace.ApplyEdit(m => m.MovePageToTop(id));
         RefreshList();
         ReselectId(id);
@@ -659,6 +706,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void MoveToBottom(string id)
     {
+        if (IsGoToPageMode) return;
         App.Workspace.ApplyEdit(m => m.MovePageToBottom(id));
         RefreshList();
         ReselectId(id);
@@ -677,7 +725,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void BeginRename(PageItemViewModel item)
     {
-        if (item == null) return;
+        if (item == null || IsGoToPageMode) return;
 
         foreach (var other in _items)
         {
@@ -807,9 +855,11 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void GoToPage_Click(object sender, RoutedEventArgs e)
     {
+        ApplyGoToPageMode();
+
         if (GoToPageBtn.IsChecked == true)
         {
-            ShowStatus(InfoBarSeverity.Informational, "Go-to-page is ON. Selecting a page now navigates the open Power BI report.");
+            ShowStatus(InfoBarSeverity.Informational, "Go-to-page is ON. Editing is disabled; selecting a page navigates the open Power BI report.");
             var selected = PagesListView.SelectedItem as PageItemViewModel;
             if (selected != null)
             {
@@ -819,6 +869,65 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         else
         {
             ShowStatus(InfoBarSeverity.Informational, "Go-to-page is OFF.");
+        }
+    }
+
+    /// <summary>Disables every editing affordance while Go-to-page is on, and restores them when it turns off.</summary>
+    private void ApplyGoToPageMode()
+    {
+        var mode = IsGoToPageMode;
+
+        SortButton.IsEnabled = !mode;
+        UpdateHistoryButtons();
+
+        PagesListView.CanDragItems = !mode;
+        PagesListView.CanReorderItems = !mode;
+        PagesListView.AllowDrop = !mode;
+
+        // SearchBox and ReloadButton deliberately stay enabled in both modes.
+        foreach (var item in _items)
+        {
+            if (PagesListView.ContainerFromItem(item) is DependencyObject container)
+            {
+                if (FindDescendant<Button>(container, "OverflowBtn") is Button overflow)
+                {
+                    overflow.IsEnabled = !mode;
+                }
+
+                if (FindDescendant<Button>(container, "DeleteBtn") is Button del)
+                {
+                    del.IsEnabled = !mode;
+                }
+
+                if (FindDescendant<Grid>(container, "RowGrid") is Grid row)
+                {
+                    if (mode)
+                    {
+                        // Drop the right-click menu; keep it in Tag to restore later.
+                        if (row.Tag is not MenuFlyout && row.ContextFlyout is MenuFlyout original)
+                        {
+                            row.Tag = original;
+                        }
+                        row.ContextFlyout = null;
+                    }
+                    else if (row.Tag is MenuFlyout saved)
+                    {
+                        row.ContextFlyout = saved;
+                        row.Tag = null;
+                    }
+                }
+            }
+        }
+
+        WireGripCursors();
+        App.Log($"Go-to-page mode {(mode ? "enabled" : "disabled")}.");
+    }
+
+    private void PagesListView_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
+    {
+        if (IsGoToPageMode)
+        {
+            e.Handled = true;
         }
     }
 

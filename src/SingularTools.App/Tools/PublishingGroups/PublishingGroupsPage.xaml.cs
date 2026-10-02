@@ -113,7 +113,6 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     private CancellationTokenSource? _cts;
     private bool _isBusy;
     private bool _suppressToggle;
-    private bool _suppressNameEdit;
     private bool _suppressSelection;
     private bool _subscribed;
 
@@ -254,9 +253,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
             return;
         }
 
-        _suppressNameEdit = true;
-        GroupNameBox.Text = group.Name;
-        _suppressNameEdit = false;
+        HeaderNameText.Text = group.Name;
 
         RefreshPages();
         UpdateEmptyStates();
@@ -371,7 +368,6 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
         // The page switches drive what gets published, so they must not move
         // underneath a run that has already swapped visibility.
         PagesListView.IsEnabled = !busy;
-        GroupNameBox.IsEnabled = !busy;
 
         CancelButton.Visibility = busy && allowCancel ? Visibility.Visible : Visibility.Collapsed;
 
@@ -507,9 +503,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
 
         if (ReferenceEquals(group, _current))
         {
-            _suppressNameEdit = true;
-            GroupNameBox.Text = name;
-            _suppressNameEdit = false;
+            HeaderNameText.Text = name;
         }
     }
 
@@ -566,17 +560,6 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
     }
 
     // ---- Editor -----------------------------------------------------------
-
-    private void GroupNameBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (_suppressNameEdit || _current == null || _isBusy) return;
-
-        var name = GroupNameBox.Text.Trim();
-        if (string.IsNullOrEmpty(name)) return;
-
-        _current.Name = name;
-        SaveGroups();
-    }
 
     private void PageVisibility_Toggled(object sender, RoutedEventArgs e)
     {

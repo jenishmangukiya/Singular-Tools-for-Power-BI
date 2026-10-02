@@ -101,4 +101,71 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!--
+        Home launcher additions. These are purely additive: every existing token
+        above is untouched, so the other tool pages are unaffected.
+
+        All accent colors derive from the user's Windows accent via the
+        SystemAccentColor theme resource, so they follow light/dark themes
+        without hardcoded hex.
+    -->
+    <SolidColorBrush x:Key="BrandAccentSoftBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
+    <SolidColorBrush x:Key="BrandAccentMediumBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.20" />
+
+    <!--  Soft accent sheen for the report band: accent fading out to transparent  -->
+    <LinearGradientBrush
+        x:Key="BrandSheenBrush"
+        StartPoint="0,0"
+        EndPoint="1,1">
+        <GradientStop Offset="0" Color="{ThemeResource SystemAccentColor}" />
+        <GradientStop Offset="0.6" Color="Transparent" />
+    </LinearGradientBrush>
+
+    <!--  Section label above each group of tool cards  -->
+    <Style x:Key="GroupHeaderTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CharacterSpacing" Value="60" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <!--
+        Launcher card. Wrapping the card in a flat Button means hover, focus and
+        Enter/Space activation come from the control rather than hand-rolled states.
+    -->
+    <Style x:Key="ToolCardButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusLarge}" />
+    </Style>
+
+    <!--  Report band surface  -->
+    <Style x:Key="HeroBorderStyle" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusLarge}" />
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <!--  Small status pills in the report band and on tool cards  -->
+    <Style x:Key="StatChipStyle" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSmall}" />
+        <Setter Property="Padding" Value="{StaticResource BadgePadding}" />
+        <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="AccentChipStyle" TargetType="Border" BasedOn="{StaticResource StatChipStyle}">
+        <Setter Property="Background" Value="{StaticResource BrandAccentSoftBrush}" />
+    </Style>
+
+    <Style x:Key="StatChipTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+    </Style>
+
 </ResourceDictionary>

@@ -60,6 +60,8 @@ internal sealed class ScreenPickService : IDisposable
     private HookProc? _mouseProc;
     private HookProc? _keyboardProc;
     private Magnifier? _magnifier;
+    private bool _previewQueued;
+    private POINT? _pendingPreview;
 
     public ScreenPickService()
     {
@@ -97,6 +99,9 @@ internal sealed class ScreenPickService : IDisposable
 
         _mouseProc = null;
         _keyboardProc = null;
+
+        _previewQueued = false;
+        _pendingPreview = null;
 
         _magnifier?.Dispose();
         _magnifier = null;
@@ -148,8 +153,15 @@ internal sealed class ScreenPickService : IDisposable
 
             if (message == WM_MOUSEMOVE && Mode == PickMode.ColorSample)
             {
-                var point = data.pt;
-                Post(() => PreviewColor(point));
+                // Coalesce the flood of move messages into one queued preview per
+                // dispatcher tick; hook callbacks must not pile up expensive GDI work,
+                // or the cursor lags and the magnifier trails behind the pointer.
+                _pendingPreview = data.pt;
+                if (!_previewQueued)
+                {
+                    _previewQueued = true;
+                    Post(ProcessPreview);
+                }
             }
             else if (message == WM_LBUTTONDOWN)
             {
@@ -222,6 +234,16 @@ internal sealed class ScreenPickService : IDisposable
         catch (Exception ex)
         {
             App.Log($"ScreenPick: grab failed: {ex.Message}");
+        }
+    }
+
+    private void ProcessPreview()
+    {
+        _previewQueued = false;
+        var point = _pendingPreview;
+        if (point.HasValue)
+        {
+            PreviewColor(point.Value);
         }
     }
 
@@ -420,16 +442,25 @@ internal sealed class ScreenPickService : IDisposable
         }
     }
 
-    private static Color[,] SampleRegion(int x, int y, int width, int height)
+    private static Color[,] SampleRegion(int centerX, int centerY, int width, int height)
     {
         var result = new Color[height, width];
         var screenDc = GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero) return result;
 
-        var screenWidth = GetSystemMetrics(0);
-        var screenHeight = GetSystemMetrics(1);
-        x = Math.Clamp(x, 0, Math.Max(0, screenWidth - width));
-        y = Math.Clamp(y, 0, Math.Max(0, screenHeight - height));
+        // Center the region on the cursor, mirroring PowerToys' picker, so the
+        // center cell of the magnifier is always exactly the cursor pixel. The
+        // origin is *not* clamped; pixels that fall outside the virtual screen
+        // are left blank. (GetSystemMetrics(0/1) is the primary strip only — the
+        // window can live on a negative-offset secondary monitor.)
+        var originX = centerX - width / 2;
+        var originY = centerY - height / 2;
+
+        // SM_XVIRTUALSCREEN / SM_YVIRTUALSCREEN / SM_CX / SM_CYVIRTUALSCREEN
+        var vx = GetSystemMetrics(76);
+        var vy = GetSystemMetrics(77);
+        var vw = GetSystemMetrics(78);
+        var vh = GetSystemMetrics(79);
 
         var memDc = IntPtr.Zero;
         var bitmap = IntPtr.Zero;
@@ -442,12 +473,36 @@ internal sealed class ScreenPickService : IDisposable
             if (memDc == IntPtr.Zero || bitmap == IntPtr.Zero) return result;
 
             previous = SelectObject(memDc, bitmap);
-            if (!BitBlt(memDc, 0, 0, width, height, screenDc, x, y, SRCCOPY)) return result;
+
+            var srcX = Math.Max(originX, vx);
+            var srcY = Math.Max(originY, vy);
+            var srcRight = Math.Min(originX + width, vx + vw);
+            var srcBottom = Math.Min(originY + height, vy + vh);
+
+            if (srcRight > srcX && srcBottom > srcY)
+            {
+                var copyW = srcRight - srcX;
+                var copyH = srcBottom - srcY;
+                // Copy the on-screen part into the right offset of the full region.
+                BitBlt(memDc, srcX - originX, srcY - originY, copyW, copyH,
+                       screenDc, srcX, srcY, SRCCOPY);
+            }
 
             for (var row = 0; row < height; row++)
             {
                 for (var col = 0; col < width; col++)
                 {
+                    var screenX = originX + col;
+                    var screenY = originY + row;
+
+                    if (screenX < vx || screenY < vy || screenX >= vx + vw || screenY >= vy + vh)
+                    {
+                        // No screen pixel here: render a clear grey so the center marker
+                        // still aligns 1:1 under the cursor even at the screen edge.
+                        result[row, col] = Color.FromArgb(255, 24, 24, 24);
+                        continue;
+                    }
+
                     var pixel = GetPixel(memDc, col, row);
                     result[row, col] = pixel == CLR_INVALID
                         ? Color.FromArgb(255, 0, 0, 0)
@@ -614,6 +669,9 @@ internal sealed class ScreenPickService : IDisposable
         private readonly IntPtr _hwnd;
         private readonly Border[,] _cells = new Border[GridSize, GridSize];
         private readonly TextBlock _label;
+        private readonly Color[,] _last = new Color[GridSize, GridSize];
+        private Color _lastCenter;
+        private bool _hasLast;
 
         public Magnifier()
         {
@@ -682,21 +740,32 @@ internal sealed class ScreenPickService : IDisposable
 
         public void Update(POINT cursor)
         {
-            var originX = cursor.X - GridSize / 2;
-            var originY = cursor.Y - GridSize / 2;
-            var colors = SampleRegion(originX, originY, GridSize, GridSize);
+            var colors = SampleRegion(cursor.X, cursor.Y, GridSize, GridSize);
 
             for (var row = 0; row < GridSize; row++)
             {
                 for (var col = 0; col < GridSize; col++)
                 {
+                    if (_hasLast && _last[row, col].R == colors[row, col].R &&
+                        _last[row, col].G == colors[row, col].G &&
+                        _last[row, col].B == colors[row, col].B)
+                    {
+                        continue;
+                    }
+
+                    _last[row, col] = colors[row, col];
                     _cells[row, col].Background = new SolidColorBrush(colors[row, col]);
                 }
             }
 
             var center = colors[GridSize / 2, GridSize / 2];
-            _label.Text = $"#{center.R:X2}{center.G:X2}{center.B:X2}   R{center.R} G{center.G} B{center.B}";
+            if (!_hasLast || center.R != _lastCenter.R || center.G != _lastCenter.G || center.B != _lastCenter.B)
+            {
+                _lastCenter = center;
+                _label.Text = $"#{center.R:X2}{center.G:X2}{center.B:X2}   R{center.R} G{center.G} B{center.B}";
+            }
 
+            _hasLast = true;
             Position(cursor);
         }
 
@@ -708,13 +777,18 @@ internal sealed class ScreenPickService : IDisposable
             var x = cursor.X + 24;
             var y = cursor.Y + 24;
 
-            var screenWidth = GetSystemMetrics(0);
-            var screenHeight = GetSystemMetrics(1);
+            var vx = GetSystemMetrics(76); // SM_XVIRTUALSCREEN
+            var vy = GetSystemMetrics(77);
+            var screenWidth = vx + GetSystemMetrics(78); // right edge of virtual screen
+            var screenHeight = vy + GetSystemMetrics(79);
+
+            x = Math.Max(x, vx);
+            y = Math.Max(y, vy);
 
             if (x + width > screenWidth) x = cursor.X - width - 24;
             if (y + height > screenHeight) y = cursor.Y - height - 24;
-            if (x < 0) x = 0;
-            if (y < 0) y = 0;
+            if (x < vx) x = vx;
+            if (y < vy) y = vy;
 
             SetWindowPos(_hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
