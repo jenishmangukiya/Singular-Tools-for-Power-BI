@@ -4,7 +4,7 @@
   "position": {
     "x": 1209.483282674772,
     "y": 207.17325227963525,
-    "z": 5002,
+    "z": 7000,
     "height": 595.258358662614,
     "width": 363.28267477203644
   },
@@ -471,56 +471,5 @@
       ]
     },
     "drillFilterOtherVisuals": true
-  },
-  "filterConfig": {
-    "filters": [
-      {
-        "name": "5ddd664e4292d5d47664",
-        "field": {
-          "Aggregation": {
-            "Expression": {
-              "Column": {
-                "Expression": {
-                  "SourceRef": {
-                    "Entity": "financials"
-                  }
-                },
-                "Property": "Date"
-              }
-            },
-            "Function": 5
-          }
-        },
-        "type": "Advanced"
-      },
-      {
-        "name": "def9c1b2ab213bb0d8b8",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Segment"
-          }
-        },
-        "type": "Categorical"
-      },
-      {
-        "name": "24503d7b963db2140368",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Year"
-          }
-        },
-        "type": "Advanced"
-      }
-    ]
   }
 }

@@ -1,0 +1,7 @@
+role ols-R2
+	modelPermission: read
+
+	tablePermission financials = [Date] == dt"2026-10-06"
+
+	annotation PBI_Id = 264017bb6cf9486d83d6080fbbe14555
+

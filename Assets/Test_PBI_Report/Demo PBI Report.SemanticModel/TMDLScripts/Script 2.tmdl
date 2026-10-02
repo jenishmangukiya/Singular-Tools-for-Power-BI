@@ -1,7 +1,0 @@
-createOrReplace
-
-	ref table financials
-
-		measure 'Discount Band_ord2'
-			lineageTag: 4fe8de86-c463-49a3-9585-a548ea416336
-

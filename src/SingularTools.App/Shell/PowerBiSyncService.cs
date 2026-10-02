@@ -22,6 +22,7 @@ internal sealed class PowerBiSyncService
     private bool _applyPending;
     private bool _running;
     private bool _stopped;
+    private TaskCompletionSource<bool>? _saveCompletion;
 
     /// <summary>
     /// Queues a save of Desktop's current report. Returns immediately. Repeated
@@ -38,6 +39,34 @@ internal sealed class PowerBiSyncService
         }
 
         _ = Task.Run(RunLoop);
+    }
+
+    /// <summary>
+    /// Queues a save and returns a task whose result is true when Desktop actually
+    /// wrote a file (i.e. it had unsaved changes). Used by the startup flow so tools
+    /// only render after Desktop's on-disk state is current, and so a no-op save
+    /// does not sit through a watcher wait. Coalesces with any in-flight pass.
+    /// </summary>
+    public Task<bool> RequestSaveAsync()
+    {
+        TaskCompletionSource<bool> completion;
+
+        lock (_gate)
+        {
+            if (_stopped)
+            {
+                return Task.FromResult(false);
+            }
+
+            // One awaited save at a time; extra callers share the same completion.
+            completion = _saveCompletion ??= new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _savePending = true;
+            if (_running) return completion.Task;
+            _running = true;
+        }
+
+        _ = Task.Run(RunLoop);
+        return completion.Task;
     }
 
     /// <summary>
@@ -60,12 +89,19 @@ internal sealed class PowerBiSyncService
     /// <summary>Stops accepting new requests; an in-flight pass is allowed to finish.</summary>
     public void Stop()
     {
+        TaskCompletionSource<bool>? completion;
+
         lock (_gate)
         {
             _stopped = true;
             _savePending = false;
             _applyPending = false;
+            completion = _saveCompletion;
+            _saveCompletion = null;
         }
+
+        // Never leave a startup await hanging on shutdown.
+        completion?.TrySetResult(false);
     }
 
     private void RunLoop()
@@ -89,6 +125,7 @@ internal sealed class PowerBiSyncService
                 _applyPending = false;
             }
 
+            var savedSomething = false;
             try
             {
                 if (doApply)
@@ -103,13 +140,36 @@ internal sealed class PowerBiSyncService
                 {
                     // The author may have edited Desktop without saving. Flush it so
                     // the tools read current data; the file watcher then reloads us.
-                    PowerBiPublisher.TrySaveOpenReportInPowerBi();
+                    // TrySave returns false when there was nothing to save.
+                    savedSomething = PowerBiPublisher.TrySaveOpenReportInPowerBi();
                 }
             }
             catch (Exception ex)
             {
                 App.Log($"Power BI sync failed: {ex.Message}");
             }
+            finally
+            {
+                // Release anyone awaiting this save. An "apply" pass counts as "done":
+                // a save queued behind it would otherwise never report.
+                if (doSave || doApply)
+                {
+                    CompleteSave(savedSomething || doApply);
+                }
+            }
         }
+    }
+
+    /// <summary>Completes the pending awaited save (if any) and arms a fresh one.</summary>
+    private void CompleteSave(bool wroteFile)
+    {
+        TaskCompletionSource<bool>? completion;
+        lock (_gate)
+        {
+            completion = _saveCompletion;
+            _saveCompletion = null;
+        }
+
+        completion?.TrySetResult(wroteFile);
     }
 }

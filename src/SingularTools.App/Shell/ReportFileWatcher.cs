@@ -14,12 +14,14 @@ internal sealed class ReportFileWatcher : IDisposable
     private const int DebounceMs = 600;
 
     private readonly Action _onChanged;
+    private readonly string _filter;
     private FileSystemWatcher? _watcher;
     private DispatcherQueueTimer? _debounce;
 
-    public ReportFileWatcher(Action onChanged)
+    public ReportFileWatcher(Action onChanged, string filter = "*.json")
     {
         _onChanged = onChanged;
+        _filter = filter;
     }
 
     public void Watch(string directory)
@@ -36,7 +38,7 @@ internal sealed class ReportFileWatcher : IDisposable
             _watcher = new FileSystemWatcher(directory)
             {
                 IncludeSubdirectories = true,
-                Filter = "*.json",
+                Filter = _filter,
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.Size,
                 InternalBufferSize = 64 * 1024,
                 EnableRaisingEvents = true

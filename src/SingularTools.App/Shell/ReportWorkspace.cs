@@ -22,14 +22,18 @@ public sealed class ReportWorkspace : IDisposable
 
     private ReportEditHistory? _history;
     private readonly ReportFileWatcher _watcher;
+    private readonly ReportFileWatcher _modelWatcher;
     private readonly PowerBiSyncService _powerBiSync = new();
     private string _signature = string.Empty;
+    private string _modelSignature = string.Empty;
+    private string _modelFolder = string.Empty;
     private DispatcherQueueTimer? _retryTimer;
     private int _retryCount;
 
     public ReportWorkspace()
     {
         _watcher = new ReportFileWatcher(OnExternalChange);
+        _modelWatcher = new ReportFileWatcher(OnModelExternalChange, "*.tmdl");
     }
 
     public ReportManager Manager { get; } = new();
@@ -48,6 +52,13 @@ public sealed class ReportWorkspace : IDisposable
     /// <summary>Raised when an external change was detected and pulled into the session.</summary>
     public event EventHandler? ExternalChangeDetected;
 
+    /// <summary>
+    /// Raised when the semantic model's TMDL files changed on disk (typically a save
+    /// from Power BI Desktop, or a model edit by another tool). Unlike
+    /// <see cref="Changed"/>, this does not touch page state or undo history.
+    /// </summary>
+    public event EventHandler? ModelChanged;
+
     /// <summary>Loads a report folder and starts a fresh undo history. Returns false for an invalid folder.</summary>
     public bool OpenReport(string folderPath)
     {
@@ -59,6 +70,7 @@ public sealed class ReportWorkspace : IDisposable
         ResetHistory();
         _signature = ComputeSignature();
         _watcher.Watch(Path.Combine(Manager.ReportFolderPath, "definition"));
+        WatchModel();
         RaiseChanged();
         return true;
     }
@@ -69,6 +81,7 @@ public sealed class ReportWorkspace : IDisposable
         Manager.Reload();
         ResetHistory();
         _signature = ComputeSignature();
+        WatchModel();
         RaiseChanged();
     }
 
@@ -115,6 +128,16 @@ public sealed class ReportWorkspace : IDisposable
         {
             _powerBiSync.RequestSave();
         }
+    }
+
+    /// <summary>
+    /// Asks Power BI Desktop to save and returns a task whose result is true when a
+    /// file was actually written, so a caller can gate on Desktop's on-disk state
+    /// being current (used by the startup flow). False when no report is open.
+    /// </summary>
+    public Task<bool> RequestPowerBiSaveAsync()
+    {
+        return HasReport ? _powerBiSync.RequestSaveAsync() : Task.FromResult(false);
     }
 
     /// <summary>
@@ -193,9 +216,87 @@ public sealed class ReportWorkspace : IDisposable
     {
         _powerBiSync.Stop();
         _watcher.Dispose();
+        _modelWatcher.Dispose();
         _retryTimer?.Stop();
         _history?.Dispose();
         _history = null;
+    }
+
+    /// <summary>
+    /// Marks the on-disk semantic model files as known, so a write this app just
+    /// made does not come back as a spurious "model changed in Power BI" event.
+    /// Model-editing tools call this immediately after they save.
+    /// </summary>
+    public void NotifyModelFilesChanged()
+    {
+        if (!string.IsNullOrEmpty(_modelFolder) && Directory.Exists(_modelFolder))
+        {
+            _modelSignature = ComputeModelSignature(_modelFolder);
+        }
+    }
+
+    /// <summary>Starts watching the sibling semantic model (if any) for TMDL changes.</summary>
+    private void WatchModel()
+    {
+        _modelFolder = HasReport
+            ? SortByColumnService.DiscoverModelFolder(Manager.ReportFolderPath) ?? string.Empty
+            : string.Empty;
+        _modelSignature = string.Empty;
+
+        if (string.IsNullOrEmpty(_modelFolder))
+        {
+            return;
+        }
+
+        _modelWatcher.Watch(Path.Combine(_modelFolder, "definition"));
+        _modelSignature = ComputeModelSignature(_modelFolder);
+    }
+
+    private void OnModelExternalChange()
+    {
+        if (string.IsNullOrEmpty(_modelFolder) || !Directory.Exists(_modelFolder))
+        {
+            return;
+        }
+
+        var current = ComputeModelSignature(_modelFolder);
+        if (string.Equals(current, _modelSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _modelSignature = current;
+        App.Log("External semantic model change detected.");
+        ModelChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static string ComputeModelSignature(string modelFolder)
+    {
+        try
+        {
+            var definition = Path.Combine(modelFolder, "definition");
+            if (!Directory.Exists(definition))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (var file in Directory.EnumerateFiles(definition, "*.tmdl", SearchOption.AllDirectories)
+                                         .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                var info = new FileInfo(file);
+                builder.Append(info.FullName).Append('|')
+                       .Append(info.LastWriteTimeUtc.Ticks).Append('|')
+                       .Append(info.Length).Append('\n');
+            }
+
+            return builder.ToString();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Model signature compute failed: {ex.Message}");
+            return string.Empty;
+        }
     }
 
     private void OnExternalChange()

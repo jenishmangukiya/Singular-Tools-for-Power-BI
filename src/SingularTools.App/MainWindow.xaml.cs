@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window
     private static readonly TimeSpan PowerBiFocusSaveCooldown = TimeSpan.FromSeconds(2);
 
     private bool _wasActive;
+    private bool _startupSyncDone;
     private DateTime _lastPowerBiSaveUtc = DateTime.MinValue;
 
     [DllImport("user32.dll")]
@@ -47,6 +48,7 @@ public sealed partial class MainWindow : Window
 
         ToastService.Requested += OnToastRequested;
         App.Workspace.ExternalChangeDetected += OnExternalChangeDetected;
+        App.Workspace.ModelChanged += OnModelChanged;
 
         _ = BrandAssets.ApplyAsync(AppTitleBarLogo);
 
@@ -155,16 +157,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // The author may have edited the open report in Power BI Desktop without
-        // saving. Persist those edits on focus gain so every tool reads current
-        // data; the file watcher reloads us once Desktop writes. Off-thread and
-        // coalesced with our own apply-external-changes passes.
-        if (!_wasActive)
-        {
-            _wasActive = true;
-            MaybeRequestPowerBiSave();
-        }
-
         if (!_hasInitializedPosition)
         {
             _hasInitializedPosition = true;
@@ -189,6 +181,105 @@ public sealed partial class MainWindow : Window
             // re-apply the icon here to make sure it appears in the taskbar too.
             ApplyAppIcon();
         }
+
+        if (!_wasActive)
+        {
+            _wasActive = true;
+
+            // First activation performs a gated "flush Desktop, then render" handshake
+            // so the tools never show a stale report. Later focus gains keep the cheap
+            // throttled save.
+            if (!_startupSyncDone)
+            {
+                _startupSyncDone = true;
+                _ = RunStartupSyncAsync();
+            }
+            else
+            {
+                MaybeRequestPowerBiSave();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Flushes Power BI Desktop on first launch and only then refreshes the active
+    /// tool, so it reads the author's latest edits. Shows a blocking overlay while it
+    /// runs; skips the overlay entirely when Desktop is not running.
+    /// </summary>
+    private async Task RunStartupSyncAsync()
+    {
+        var service = new StartupSyncService();
+        var runSave = PowerBiPublisher.IsPowerBiRunning() && PowerBiDetector.CountOpenPowerBiReports() <= 1;
+        var overlayShown = false;
+
+        try
+        {
+            if (runSave)
+            {
+                ShowStartupOverlay();
+                overlayShown = true;
+            }
+
+            var result = await service.RunAsync(EnsureReportLoaded);
+
+            if (result.TimedOut)
+            {
+                ToastService.Show(
+                    "Power BI Desktop took too long to save — showing what is on disk.",
+                    ToastSeverity.Informational);
+            }
+            else if (result.WroteFile)
+            {
+                ToastService.Show("Synced the latest edits from Power BI Desktop.", ToastSeverity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Startup sync flow failed: {ex}");
+        }
+        finally
+        {
+            if (overlayShown)
+            {
+                HideStartupOverlay();
+            }
+
+            // The tools can now render against current on-disk data.
+            ActiveTool?.OnActivated();
+        }
+    }
+
+    /// <summary>Opens the report the tools should work on, mirroring the Home page.</summary>
+    private static bool EnsureReportLoaded()
+    {
+        if (App.Workspace.HasReport)
+        {
+            return true;
+        }
+
+        try
+        {
+            var discovered = ReportManager.DiscoverReportFolder();
+            return discovered != null && App.Workspace.OpenReport(discovered);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Startup report discovery failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void ShowStartupOverlay()
+    {
+        StartupDetailText.Text = "Saving the report open in Power BI Desktop so the tools show your latest edits\u2026";
+        StartupOverlay.Visibility = Visibility.Visible;
+        App.Log("Startup overlay shown.");
+    }
+
+    private void HideStartupOverlay()
+    {
+        StartupOverlay.Visibility = Visibility.Collapsed;
+        App.Log("Startup overlay hidden.");
     }
 
     /// <summary>
@@ -369,6 +460,11 @@ public sealed partial class MainWindow : Window
     private void OnExternalChangeDetected(object? sender, EventArgs e)
     {
         ToastService.Show("Report updated in Power BI Desktop — refreshed.", ToastSeverity.Informational);
+    }
+
+    private void OnModelChanged(object? sender, EventArgs e)
+    {
+        ToastService.Show("Semantic model updated in Power BI Desktop — refreshed.", ToastSeverity.Informational);
     }
 
     private void OnToastRequested(ToastRequest request)

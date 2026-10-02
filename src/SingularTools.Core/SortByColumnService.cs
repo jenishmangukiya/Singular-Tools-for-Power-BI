@@ -43,6 +43,14 @@ public sealed class SemanticModelTable
     public string Name { get; init; } = string.Empty;
     public string FilePath { get; init; } = string.Empty;
     public IReadOnlyList<SemanticModelColumn> Columns { get; init; } = Array.Empty<SemanticModelColumn>();
+
+    /// <summary>
+    /// Auto-generated helper tables (date templates) carry <c>isPrivate</c>. Power BI
+    /// hides them from model authors, so tools that present the model skip them.
+    /// Tables marked only <c>isHidden</c> are still shown, matching Power BI's model
+    /// view, which lists hidden tables.
+    /// </summary>
+    public bool IsPrivate { get; init; }
 }
 
 /// <summary>A semantic model discovered next to a report.</summary>
@@ -128,7 +136,6 @@ public sealed class SortByColumnApplyResult
 public static class SortByColumnService
 {
     public const string DefaultSuffix = "_ord";
-    private const int MaxBackups = 10;
 
     private static readonly Regex TableHeaderRegex =
         new(@"^table\s+('(?:[^']|'')*'|""[^""]*""|[^\s]+)", RegexOptions.Compiled);
@@ -191,7 +198,13 @@ public static class SortByColumnService
         }
     }
 
-    /// <summary>Reads every table TMDL of a semantic model. Never writes.</summary>
+    /// <summary>
+    /// Reads every user-facing table TMDL of a semantic model. Never writes.
+    /// Auto-generated date-template tables are marked <c>isPrivate</c>; Power BI
+    /// hides them from model authors, so they are excluded here and therefore absent
+    /// from every tool that offers the model's tables. Tables marked only
+    /// <c>isHidden</c> are still included, matching Power BI's model view.
+    /// </summary>
     public static SemanticModel LoadModel(string modelFolder)
     {
         var folder = Path.GetFullPath(modelFolder);
@@ -204,7 +217,8 @@ public static class SortByColumnService
                                           .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
             {
                 var table = ParseTableFile(file);
-                if (table != null) tables.Add(table);
+                if (table == null || table.IsPrivate) continue;
+                tables.Add(table);
             }
         }
 
@@ -332,12 +346,12 @@ public static class SortByColumnService
 
         // 2. Snapshot every file we are about to overwrite, so the whole apply is reversible.
         var backupFolder = createBackup && !string.IsNullOrWhiteSpace(projectRoot)
-            ? CreateBackupFolder(projectRoot!, model.FolderPath)
+            ? ModelBackupStore.CreateBackupFolder(projectRoot!, model.FolderPath)
             : null;
 
         if (backupFolder != null)
         {
-            foreach (var edit in edits) BackupFile(backupFolder, edit.File);
+            foreach (var edit in edits) ModelBackupStore.BackupFile(backupFolder, edit.File);
             result.BackupFolder = backupFolder;
         }
 
@@ -586,6 +600,7 @@ public static class SortByColumnService
         }
 
         var tableName = string.Empty;
+        var isPrivate = false;
         var columns = new List<SemanticModelColumn>();
         var columnBlocks = FindColumnBlocks(lines.ToList());
 
@@ -602,12 +617,28 @@ public static class SortByColumnService
 
         if (tableName.Length == 0) return null;
 
+        // isPrivate is a table-level flag on its own tab-indented line.
+        foreach (var line in lines)
+        {
+            if (string.Equals(line.Trim(), "isPrivate", StringComparison.Ordinal))
+            {
+                isPrivate = true;
+                break;
+            }
+        }
+
         foreach (var block in columnBlocks)
         {
             columns.Add(ParseColumnBlock(lines, block));
         }
 
-        return new SemanticModelTable { Name = tableName, FilePath = path, Columns = columns };
+        return new SemanticModelTable
+        {
+            Name = tableName,
+            FilePath = path,
+            Columns = columns,
+            IsPrivate = isPrivate
+        };
     }
 
     private static SemanticModelColumn ParseColumnBlock(string[] lines, ColumnBlock block)
@@ -734,160 +765,17 @@ public static class SortByColumnService
     }
 
     // -------------------------------------------------------------- Backups
-
-    private static string BackupRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SingularPowerTools",
-        "backups");
+    // The snapshot logic lives in ModelBackupStore so every model-editing tool
+    // (Sort by Column, Object Security) shares the same undo target.
 
     /// <summary>A stable, filesystem-safe key for a project's backup folder.</summary>
-    public static string ProjectKey(string projectRoot)
-    {
-        var full = Path.GetFullPath(projectRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var name = Path.GetFileName(full);
-        var safe = new string(name.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_').ToArray());
-        if (safe.Length == 0) safe = "project";
+    public static string ProjectKey(string projectRoot) => ModelBackupStore.ProjectKey(projectRoot);
 
-        var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(full.ToLowerInvariant())))[..8];
-        return $"{safe}-{hash}";
-    }
+    public static string BackupFolderFor(string projectRoot) => ModelBackupStore.BackupFolderFor(projectRoot);
 
-    public static string BackupFolderFor(string projectRoot) => Path.Combine(BackupRoot, ProjectKey(projectRoot));
-
-    public static string? LatestBackupFolder(string projectRoot)
-    {
-        var folder = BackupFolderFor(projectRoot);
-        if (!Directory.Exists(folder)) return null;
-
-        return Directory.GetDirectories(folder)
-                        .Where(d => File.Exists(Path.Combine(d, "manifest.json")))
-                        .OrderBy(d => Path.GetFileName(d), StringComparer.Ordinal)
-                        .LastOrDefault();
-    }
-
-    private static string CreateBackupFolder(string projectRoot, string modelFolder)
-    {
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
-        var dir = Path.Combine(BackupFolderFor(projectRoot), stamp);
-        Directory.CreateDirectory(dir);
-
-        var manifest = new JsonObject
-        {
-            ["createdUtc"] = DateTime.UtcNow.ToString("o"),
-            ["projectRoot"] = projectRoot,
-            ["modelFolder"] = modelFolder,
-            ["files"] = new JsonArray()
-        };
-
-        File.WriteAllText(Path.Combine(dir, "manifest.json"), manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        PruneBackups(projectRoot);
-        return dir;
-    }
-
-    private static void BackupFile(string backupFolder, string file)
-    {
-        var manifestPath = Path.Combine(backupFolder, "manifest.json");
-        if (File.Exists(manifestPath) && JsonNode.Parse(File.ReadAllText(manifestPath)) is JsonObject manifest &&
-            manifest["files"] is JsonArray files)
-        {
-            var stored = Path.GetFileName(file);
-            var index = 0;
-            while (files.Any(n => string.Equals(n?["fileName"]?.ToString(), stored, StringComparison.OrdinalIgnoreCase)))
-            {
-                stored = $"{index++:D2}_{Path.GetFileName(file)}";
-            }
-
-            File.Copy(file, Path.Combine(backupFolder, stored), overwrite: true);
-            files.Add(new JsonObject { ["original"] = file, ["fileName"] = stored });
-            File.WriteAllText(manifestPath, manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        }
-    }
+    public static string? LatestBackupFolder(string projectRoot) => ModelBackupStore.LatestBackupFolder(projectRoot);
 
     /// <summary>Restores the files captured by the most recent apply. Returns how many were written.</summary>
     public static int RestoreLatestBackup(string projectRoot, out string? restoredFrom)
-    {
-        restoredFrom = null;
-        var folder = LatestBackupFolder(projectRoot);
-        if (folder == null) return 0;
-
-        var manifestPath = Path.Combine(folder, "manifest.json");
-        if (!File.Exists(manifestPath)) return 0;
-
-        var restored = 0;
-        try
-        {
-            if (JsonNode.Parse(File.ReadAllText(manifestPath)) is JsonObject manifest &&
-                manifest["files"] is JsonArray files)
-            {
-                foreach (var entry in files)
-                {
-                    if (entry is not JsonObject node) continue;
-
-                    var original = node["original"]?.ToString();
-                    var stored = node["fileName"]?.ToString();
-                    if (string.IsNullOrEmpty(original) || string.IsNullOrEmpty(stored)) continue;
-
-                    var source = Path.Combine(folder, stored);
-                    if (!File.Exists(source)) continue;
-
-                    var dir = Path.GetDirectoryName(original);
-                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
-                    File.Copy(source, original, overwrite: true);
-                    restored++;
-                }
-            }
-
-            if (restored > 0)
-            {
-                restoredFrom = folder;
-                Directory.Delete(folder, recursive: true);
-                RemoveIfEmpty(Path.GetDirectoryName(folder));
-            }
-        }
-        catch
-        {
-            return restored;
-        }
-
-        return restored;
-    }
-
-    private static void PruneBackups(string projectRoot)
-    {
-        try
-        {
-            var folder = BackupFolderFor(projectRoot);
-            if (!Directory.Exists(folder)) return;
-
-            var all = Directory.GetDirectories(folder)
-                               .OrderBy(d => Path.GetFileName(d), StringComparer.Ordinal)
-                               .ToList();
-
-            while (all.Count > MaxBackups)
-            {
-                try { Directory.Delete(all[0], recursive: true); } catch { }
-                all.RemoveAt(0);
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    /// <summary>Removes a backup key folder once its last snapshot is gone.</summary>
-    private static void RemoveIfEmpty(string? folder)
-    {
-        try
-        {
-            if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder) &&
-                !Directory.EnumerateFileSystemEntries(folder).Any())
-            {
-                Directory.Delete(folder, recursive: false);
-            }
-        }
-        catch
-        {
-        }
-    }
+        => ModelBackupStore.RestoreLatestBackup(projectRoot, out restoredFrom);
 }

@@ -46,6 +46,12 @@ public static class ToolRegistry
             title: "Sort by Column",
             description: "Point text columns at their order columns so they sort logically",
             glyph: "\uE8CB", // Sort
-            pageType: typeof(Tools.SortByColumn.SortByColumnPage))
+            pageType: typeof(Tools.SortByColumn.SortByColumnPage)),
+        new(
+            id: "object-security",
+            title: "Object Security",
+            description: "Manage object-level security (OLS) roles for tables and columns",
+            glyph: "\uE72E", // Lock
+            pageType: typeof(Tools.ObjectSecurity.ObjectSecurityPage))
     };
 }

@@ -466,6 +466,7 @@ public sealed partial class SortByColumnPage : Page, IToolPage
         try
         {
             var result = SortByColumnService.Apply(_model, selected, createBackup: true, projectRoot: _projectRoot);
+            App.Workspace.NotifyModelFilesChanged();
 
             // Power BI Desktop has the old model in memory: click "Apply external
             // changes" and confirm the "Overwrite your unsaved edits" prompt so the
@@ -511,6 +512,7 @@ public sealed partial class SortByColumnPage : Page, IToolPage
         try
         {
             var restored = SortByColumnService.RestoreLatestBackup(_projectRoot, out _);
+            App.Workspace.NotifyModelFilesChanged();
 
             // The restore rewrites the model on disk, so tell Power BI Desktop to
             // pick it up the same way an apply does.

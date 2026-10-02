@@ -1,0 +1,11 @@
+createOrReplace
+
+	role 'RLS & OLS'
+		modelPermission: read
+
+		tablePermission financials
+
+			columnPermission Country = none
+
+		annotation PBI_Id = ad18dff227b048d385449c8acc8c7186
+

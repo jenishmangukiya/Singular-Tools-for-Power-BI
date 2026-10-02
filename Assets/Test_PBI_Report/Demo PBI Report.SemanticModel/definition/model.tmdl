@@ -17,5 +17,9 @@ ref table financials
 ref table DateTableTemplate_aecf1a85-62fa-494b-a49e-4b3eefa351f0
 ref table LocalDateTable_22bc4709-7451-4c9d-aa8f-9e01ef89fc91
 
+ref role R1
+ref role ols-R2
+ref role Untitled
+
 ref cultureInfo en-US
 

@@ -135,5 +135,54 @@
             IsHitTestVisible="False"
             Spacing="8"
             Canvas.ZIndex="100" />
+
+        <!--  Startup sync: shown until Power BI Desktop's save has landed  -->
+        <Grid
+            x:Name="StartupOverlay"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            Canvas.ZIndex="150"
+            Visibility="Collapsed">
+            <Grid.Background>
+                <AcrylicBrush
+                    AlwaysUseFallback="False"
+                    FallbackColor="#E60C0C0C"
+                    TintColor="#000000"
+                    TintOpacity="0.35" />
+            </Grid.Background>
+
+            <Border
+                MaxWidth="420"
+                Padding="28,24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusLarge}">
+                <StackPanel Spacing="{StaticResource SpaceL}">
+                    <ProgressRing
+                        Width="40"
+                        Height="40"
+                        HorizontalAlignment="Center"
+                        IsActive="True" />
+
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource ToolTitleTextStyle}"
+                        Text="Getting the latest data"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        x:Name="StartupDetailText"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource MutedCaptionTextStyle}"
+                        Text="Saving the report open in Power BI Desktop so the tools show your latest edits…"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

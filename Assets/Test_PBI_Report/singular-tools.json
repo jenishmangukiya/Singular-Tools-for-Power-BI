@@ -40,9 +40,8 @@
           "name": "My WS",
           "visiblePageIds": [
             "6ce61a33dfeca0131c91",
-            "03d23146c353b39f1666",
-            "127464940031610c0bc4",
-            "ddf21251aaa0ebd99de1"
+            "ddf21251aaa0ebd99de1",
+            "127464940031610c0bc4"
           ],
           "workspaceNames": [
             "My workspace"
@@ -72,7 +71,7 @@
       ]
     },
     "sortByColumn": {
-      "suffix": "_ord_2",
+      "suffix": "_ord",
       "excluded": []
     }
   },

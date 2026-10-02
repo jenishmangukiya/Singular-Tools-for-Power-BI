@@ -4,7 +4,7 @@
   "position": {
     "x": 709.05775075987845,
     "y": 14.589665653495441,
-    "z": 5001,
+    "z": 6000,
     "height": 595.258358662614,
     "width": 463.951367781155
   },
@@ -635,56 +635,5 @@
       ]
     },
     "drillFilterOtherVisuals": true
-  },
-  "filterConfig": {
-    "filters": [
-      {
-        "name": "da7a4bdf04c202270822",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Product"
-          }
-        },
-        "type": "Categorical"
-      },
-      {
-        "name": "39d365be90e07029076e",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "financials"
-              }
-            },
-            "Property": "Segment"
-          }
-        },
-        "type": "Categorical"
-      },
-      {
-        "name": "6e87e8cce920d2d20eb0",
-        "field": {
-          "Aggregation": {
-            "Expression": {
-              "Column": {
-                "Expression": {
-                  "SourceRef": {
-                    "Entity": "financials"
-                  }
-                },
-                "Property": "Date"
-              }
-            },
-            "Function": 5
-          }
-        },
-        "type": "Advanced"
-      }
-    ]
   }
 }

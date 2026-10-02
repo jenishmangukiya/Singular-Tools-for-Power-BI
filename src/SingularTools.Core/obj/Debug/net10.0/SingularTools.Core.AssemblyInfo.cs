@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SingularTools.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+204cfc43d3feafafcd2790d4e5d6eb07ee3ccffd")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2572dbfeeba29870562f079454d38cdfd6d11e64")]
 [assembly: System.Reflection.AssemblyProductAttribute("SingularTools.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SingularTools.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

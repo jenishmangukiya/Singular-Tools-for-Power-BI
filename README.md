@@ -9,6 +9,11 @@
 - **🏠 Home Launcher**:
   - The app opens on a Home page with cards for every available tool, so future tools slot in automatically.
 
+- **🔄 Fresh-data startup handshake**:
+  - On launch, Singular Tools saves the report open in Power BI Desktop (clicking its Save button) and waits until the files have settled before showing the tools, so they never display a stale report.
+  - A brief spinner covers the sync; if Power BI Desktop isn't running, the app skips it and opens immediately.
+  - Later focus changes keep the report in sync automatically (save on focus, external-change apply after edits).
+
 - **🔍 Instant Page Search**:
   - Type a page name to get a suggestion dropdown of matching pages.
   - Picking a suggestion sets it as the active page (and jumps the open report when **Go to page** is enabled).
@@ -48,6 +53,12 @@
   - Groups travel with the report, stored in `singular-tools.json` alongside your color-sync rules.
   - Note: hiding a page removes it from the page list — it is **not** access control.
 
+- **🔐 Object Security (OLS)**:
+  - Manage object-level security from a role list: hide an entire table, or just the sensitive columns, from a role.
+  - Works alongside row-level security — OLS rules are stored in whichever role you pick, including one that already has RLS filters.
+  - Changes are staged and reviewed before being written to the model's role TMDL, and can be undone.
+  - Validates relationship-chain breaks and flags stale or redundant rules.
+
 - **🎨 Modern Windows 11 Fluent UI**:
   - Built with **WinUI 3** and Windows App SDK.
   - Native **Mica Backdrop**, dark & light theme auto-detection, rounded corners, and fluid typography.
@@ -86,6 +97,9 @@
 │   │   ├── Models.cs
 │   │   ├── ReportManager.cs
 │   │   ├── ReportEditHistory.cs
+│   │   ├── SortByColumnService.cs       # TMDL column sort-order edits
+│   │   ├── OlsService.cs                # TMDL object-level security roles
+│   │   ├── ModelBackupStore.cs          # Project-keyed model snapshots (undo)
 │   │   ├── PowerBiDetector.cs
 │   │   └── ScreenCaptureService.cs
 │   └── SingularTools.App/               # WinUI 3 modern Fluent UI application
@@ -96,6 +110,7 @@
 │           ├── Home/HomePage.xaml (.cs) # Home launcher
 │           ├── ReportPagesManager/ReportPagesManagerPage.xaml (.cs)
 │           ├── PublishingGroups/PublishingGroupsPage.xaml (.cs)  # Per-workspace page recipes
+│           ├── ObjectSecurity/ObjectSecurityPage.xaml (.cs)      # OLS roles
 │           └── SemanticColorManager/SemanticColorManagerPage.xaml (.cs)
 └── tests/
     └── SingularTools.Tests/             # Unit tests verifying PBIP reading, sorting, history
