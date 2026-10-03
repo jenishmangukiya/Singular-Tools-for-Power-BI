@@ -65,10 +65,7 @@
       ]
     },
     "publishMulti": {
-      "workspaces": [
-        "My workspace",
-        "Research Workspace (MS Fabric Items)"
-      ]
+      "workspaces": []
     },
     "sortByColumn": {
       "suffix": "_ord",
