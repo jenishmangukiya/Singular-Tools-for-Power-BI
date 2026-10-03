@@ -25,11 +25,13 @@ public partial class App : Application
 
     public static string LogPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SingularPowerTools",
+        "SingularTools",
         "app.log");
 
     public App()
     {
+        TryMigrateLegacyDataFolder();
+
         AppDomain.CurrentDomain.UnhandledException += (s, e) =>
         {
             Log($"[FATAL AppDomain] {e.ExceptionObject}");
@@ -52,6 +54,48 @@ public partial class App : Application
             File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\r\n");
         }
         catch { }
+    }
+
+    /// <summary>
+    /// One-time move of app data from the old <c>SingularPowerTools</c> folder to
+    /// <c>SingularTools</c> after the product rename. Runs before anything reads or
+    /// writes the data folder; a no-op once the old folder is gone.
+    /// </summary>
+    private static void TryMigrateLegacyDataFolder()
+    {
+        try
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var oldFolder = Path.Combine(localAppData, "SingularPowerTools");
+            var newFolder = Path.Combine(localAppData, "SingularTools");
+
+            if (!Directory.Exists(oldFolder)) return;
+
+            if (!Directory.Exists(newFolder))
+            {
+                // Fast path: nothing to merge, just rename the whole folder.
+                Directory.Move(oldFolder, newFolder);
+                return;
+            }
+
+            // Both exist: move each entry over, leaving any name that already
+            // exists in the new folder alone rather than overwriting it.
+            foreach (var directory in Directory.GetDirectories(oldFolder))
+            {
+                var target = Path.Combine(newFolder, Path.GetFileName(directory));
+                if (!Directory.Exists(target)) Directory.Move(directory, target);
+            }
+
+            foreach (var file in Directory.GetFiles(oldFolder))
+            {
+                var target = Path.Combine(newFolder, Path.GetFileName(file));
+                if (!File.Exists(target)) File.Move(file, target);
+            }
+        }
+        catch
+        {
+            // Migration is best-effort: a failure must never stop the app starting.
+        }
     }
 
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)

@@ -13,17 +13,17 @@ if %errorLevel% neq 0 (
 )
 
 set "TARGET_DIR=%ProgramFiles(x86)%\Common Files\Microsoft Shared\Power BI Desktop\External Tools"
-set "JSON_SRC=%~dp0SingularPowerTools.pbitool.json"
+set "JSON_SRC=%~dp0SingularTools.pbitool.json"
 
 if not exist "%TARGET_DIR%" (
     mkdir "%TARGET_DIR%"
 )
 
-copy /y "%JSON_SRC%" "%TARGET_DIR%\SingularPowerTools.pbitool.json" >nul
+copy /y "%JSON_SRC%" "%TARGET_DIR%\SingularTools.pbitool.json" >nul
 
 echo.
 echo [SUCCESS] Singular Tools has been registered!
-echo Registered at: %TARGET_DIR%\SingularPowerTools.pbitool.json
+echo Registered at: %TARGET_DIR%\SingularTools.pbitool.json
 echo.
 echo Next steps:
 echo 1. Launch or Restart Power BI Desktop.

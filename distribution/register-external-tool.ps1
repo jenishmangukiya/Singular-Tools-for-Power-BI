@@ -5,13 +5,13 @@ param (
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $scriptDir
-$appExePath = "$env:LOCALAPPDATA\SingularPowerTools\SingularTools.App.exe"
+$appExePath = "$env:LOCALAPPDATA\SingularTools\SingularTools.App.exe"
 $targetCommonDir = "${env:ProgramFiles(x86)}\Common Files\Microsoft Shared\Power BI Desktop\External Tools"
 
 # Publish (or refresh) the app so the registered tool launches the latest build.
 if (!$SkipPublish) {
-    Write-Host "Publishing Singular Tools to $env:LOCALAPPDATA\SingularPowerTools..." -ForegroundColor Cyan
-    dotnet publish "$rootDir\src\SingularTools.App\SingularTools.App.csproj" -c Release -o "$env:LOCALAPPDATA\SingularPowerTools" --nologo
+    Write-Host "Publishing Singular Tools to $env:LOCALAPPDATA\SingularTools..." -ForegroundColor Cyan
+    dotnet publish "$rootDir\src\SingularTools.App\SingularTools.App.csproj" -c Release -o "$env:LOCALAPPDATA\SingularTools" --nologo
 }
 
 # Generate resolved JSON with absolute path and proper escaping
@@ -27,7 +27,7 @@ $jsonContent = @"
 }
 "@
 
-$localJson = Join-Path $scriptDir "SingularPowerTools.pbitool.json"
+$localJson = Join-Path $scriptDir "SingularTools.pbitool.json"
 Set-Content -Path $localJson -Value $jsonContent -Encoding utf8
 
 # Check if running as Administrator
@@ -41,7 +41,7 @@ if (!$isAdmin) {
 if (!(Test-Path '$targetCommonDir')) {
     New-Item -ItemType Directory -Path '$targetCommonDir' -Force | Out-Null
 }
-Copy-Item -Path '$localJson' -Destination (Join-Path '$targetCommonDir' 'SingularPowerTools.pbitool.json') -Force
+Copy-Item -Path '$localJson' -Destination (Join-Path '$targetCommonDir' 'SingularTools.pbitool.json') -Force
 "@
     $tempPs1 = Join-Path $env:TEMP "install_pbi_tool.ps1"
     Set-Content -Path $tempPs1 -Value $workerScript -Encoding utf8
@@ -52,10 +52,10 @@ Copy-Item -Path '$localJson' -Destination (Join-Path '$targetCommonDir' 'Singula
     if (!(Test-Path $targetCommonDir)) {
         New-Item -ItemType Directory -Path $targetCommonDir -Force | Out-Null
     }
-    Copy-Item -Path $localJson -Destination (Join-Path $targetCommonDir "SingularPowerTools.pbitool.json") -Force
+    Copy-Item -Path $localJson -Destination (Join-Path $targetCommonDir "SingularTools.pbitool.json") -Force
 }
 
-$registeredFile = Join-Path $targetCommonDir "SingularPowerTools.pbitool.json"
+$registeredFile = Join-Path $targetCommonDir "SingularTools.pbitool.json"
 if (Test-Path $registeredFile) {
     Write-Host "`nSUCCESS! Singular Tools registered in Power BI Desktop!" -ForegroundColor Green
     Write-Host "File installed: $registeredFile" -ForegroundColor White

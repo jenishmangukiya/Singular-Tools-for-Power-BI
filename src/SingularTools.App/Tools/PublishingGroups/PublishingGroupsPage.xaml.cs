@@ -103,7 +103,7 @@ public sealed partial class PublishingGroupsPage : Page, IToolPage
 
     private static string SavedWorkspacesPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SingularPowerTools",
+        "SingularTools",
         "publishing-groups-workspaces.json");
 
     private readonly ObservableCollection<GroupViewModel> _groups = new();

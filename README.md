@@ -64,7 +64,7 @@
   - Native **Mica Backdrop**, dark & light theme auto-detection, rounded corners, and fluid typography.
 
 - **🔌 Power BI Desktop External Tool Integration**:
-  - Installs directly into Power BI Desktop's **External Tools** ribbon tab via `SingularPowerTools.pbitool.json`.
+  - Installs directly into Power BI Desktop's **External Tools** ribbon tab via `SingularTools.pbitool.json`.
 
 ---
 
@@ -90,7 +90,7 @@
 
 ```
 ├── distribution/
-│   ├── SingularPowerTools.pbitool.json  # External tool ribbon manifest
+│   ├── SingularTools.pbitool.json  # External tool ribbon manifest
 │   └── register-external-tool.ps1       # One-click install & registration script
 ├── src/
 │   ├── SingularTools.Core/              # PBIP parser, models, edit history & window detector
@@ -133,6 +133,6 @@ pwsh -ExecutionPolicy Bypass -File "distribution/register-external-tool.ps1"
 ```
 
 This will:
-1. Publish the Release build to `%LOCALAPPDATA%\SingularPowerTools\`.
-2. Place `SingularPowerTools.pbitool.json` in Power BI Desktop's External Tools registry.
+1. Publish the Release build to `%LOCALAPPDATA%\SingularTools\`.
+2. Place `SingularTools.pbitool.json` in Power BI Desktop's External Tools registry.
 3. Power BI Desktop will display **Singular Tools** in the ribbon under **External Tools** on next launch!

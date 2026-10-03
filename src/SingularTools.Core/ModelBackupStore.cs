@@ -15,7 +15,7 @@ namespace SingularTools.Core;
 ///
 /// A backup folder holds a <c>manifest.json</c> plus one copy per touched file;
 /// the most recent folder is always the undo target. Snapshots live under
-/// <c>%LOCALAPPDATA%\SingularPowerTools\backups</c> and the oldest are pruned.
+/// <c>%LOCALAPPDATA%\SingularTools\backups</c> and the oldest are pruned.
 /// </summary>
 public static class ModelBackupStore
 {
@@ -23,7 +23,7 @@ public static class ModelBackupStore
 
     public static string BackupRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SingularPowerTools",
+        "SingularTools",
         "backups");
 
     /// <summary>The backup scope used by a model-editing tool.</summary>

@@ -23,7 +23,7 @@ public sealed class ReportEditHistory : IDisposable
         _limit = Math.Max(2, limit);
         _root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SingularPowerTools",
+            "SingularTools",
             "history",
             Guid.NewGuid().ToString("N"));
 

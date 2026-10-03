@@ -1351,7 +1351,7 @@ internal static class PowerBiPublisher
 
     private static string DiagnosticDumpPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SingularPowerTools",
+        "SingularTools",
         "publish-dialog-dump.txt");
 
     private static void WriteDiagnosticDump(AutomationElement root, string label)

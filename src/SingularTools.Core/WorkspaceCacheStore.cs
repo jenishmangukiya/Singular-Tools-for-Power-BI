@@ -12,7 +12,7 @@ namespace SingularTools.Core;
 /// Reads and writes <see cref="WorkspaceCache"/> for the current machine, plus a
 /// one-time migration from the per-tool selection files this replaced.
 ///
-/// Lives under <c>%LOCALAPPDATA%\SingularPowerTools</c> because the list of
+/// Lives under <c>%LOCALAPPDATA%\SingularTools</c> because the list of
 /// reachable workspaces is a property of the machine and its Power BI sign-in,
 /// not of any one report. Writes are atomic, and skipped when nothing changed.
 /// </summary>
@@ -33,7 +33,7 @@ public static class WorkspaceCacheStore
     public static string ResolveDataFolder()
         => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SingularPowerTools");
+            "SingularTools");
 
     public static string ResolveCachePath() => Path.Combine(ResolveDataFolder(), FileName);
 
