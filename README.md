@@ -1,8 +1,8 @@
 # ⚡ Singular Tools for Power BI
 
-**A modern Windows toolbox for Power BI Desktop authors who are tired of the gaps.** Singular Tools plugs into Power BI Desktop's **External Tools** ribbon and automates the repetitive, click-heavy work that Power BI still doesn't do for you — page management, consistent colors, multi-workspace publishing, OLS, sort-by-column setup, and more. Built with WinUI 3 and .NET 10.
+**A modern Windows toolbox for Power BI Desktop authors who are tired of the gaps.** Singular Tools plugs into Power BI Desktop's **External Tools** ribbon and automates the repetitive, click-heavy work that Power BI still doesn't do for you — page management, consistent colors, multi-workspace publishing, object-level security (OLS), sort-by-column setup, and more. Built with WinUI 3 and .NET 10.
 
-Power BI has matured very rapidly, but many features the community has asked for never shipped. Singular Tools was built by a data nerd, for fellow data nerds, to fill those gaps.
+Power BI has matured rapidly, but many features the community has asked for were never shipped. Singular Tools was built by a data nerd, for fellow data nerds, to fill those gaps.
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="Singular Tools home" width="800">
@@ -17,7 +17,7 @@ Power BI has matured very rapidly, but many features the community has asked for
   <img src="docs/logos/power-bi.svg" alt="Microsoft Power BI" height="40">&nbsp;&nbsp;&nbsp;
   <img src="docs/logos/fabric.svg" alt="Microsoft Fabric" height="40">
 </p>
-<p align="center"><sub>Designed for the Microsoft Power BI & Microsoft Fabric ecosystem</sub></p>
+<p align="center"><sub>Designed for the Microsoft Power BI and Microsoft Fabric ecosystem</sub></p>
 
 > ⚠️ **Disclaimer:** Singular Tools is an independent community project. It is not affiliated with, endorsed by, or sponsored by Microsoft. Power BI is a trademark of Microsoft Corporation.
 
@@ -30,11 +30,11 @@ Power BI has matured very rapidly, but many features the community has asked for
 If your report has more than a handful of pages, Power BI's tab bar quickly becomes painful: navigation is tedious, creating, duplicating, and reordering pages means constant right-clicking, and the built-in UI isn't fluid. Pages Manager gives you a single, keyboard-friendly list where you can:
 
 - **Search** pages instantly to jump to the one you need
-- **Rename** pages inline (`F2`), toggle hidden/visible, **duplicate** (`Ctrl + D`), and **delete** with `Delete`
+- **Rename** pages inline (`F2`), toggle page visibility, **duplicate** a page (`Ctrl + D`), and **delete** pages with `Delete`
 - **Reorder** pages by dragging, with full **undo/redo** (`Ctrl + Z` / `Ctrl + Y`)
 - Jump the open report straight to any page with **Go to page**
 
-*Use case:* a 20-page operations report where the stakeholders want "Page 12" renamed, duplicated as a template, and moved to the front — done in seconds instead of a dozen clicks per page.
+*Use case:* a 20-page operations report where stakeholders want "Page 12" renamed, duplicated as a template, and moved to the front — done in seconds instead of a dozen clicks per page.
 
 <p align="center">
   <img src="docs/screenshots/pages-manager.png" alt="Pages Manager" width="800">
@@ -42,7 +42,7 @@ If your report has more than a handful of pages, Power BI's tab bar quickly beco
 
 ### 🎨 Color Sync — one consistent color per value, everywhere
 
-When you work with categorical data — especially Likert-scale responses (*Strongly Agree…Strongly Disagree*), segments, or yes/no flags — Power BI makes you re-assign colors for bars/columns **every time** you add or duplicate a visual. Color Sync fixes that:
+When you're working with categorical data — especially Likert-scale responses (*Strongly Agree…Strongly Disagree*), segments, or yes/no flags — Power BI makes you re-assign colors for bars and columns **every time** you add or duplicate a visual. Color Sync fixes that:
 
 - Define each value's color **once** (e.g. `Strongly Agree` → green, `Strongly Disagree` → red)
 - Apply to the **entire report** or only to specific pages
@@ -84,11 +84,11 @@ A single sales report may need to reach the **Board workspace** (every page visi
 
 ### 🔃 Sort by Column — stop wiring up sort orders by hand
 
-Your data engineers typically push a `Country_ord` or `Country_num` column for every categorical field you might need to sort logically. But wiring each one up in Power BI means opening every column, finding the matching order column, and repeating it — fine for 3 columns, **agonizing for 50+**. Sort by Column automates the whole pass:
+Your data engineers typically push a `Country_ord` or `Country_num` column for every categorical field you might need to sort logically. But wiring each one up in Power BI means opening every column, finding the matching order column, and repeating it — fine for 3 columns, **agonizing for 50 or more**. Sort by Column automates the whole pass:
 
-- Detects text columns and matches them to their `_ord` / ordering counterparts
+- Detects text columns and matches each one to its order column (for example, `Country` → `Country_ord`)
 - Applies the **Sort by column** setting directly in the model's TMDL files
-- Undo support, and it pushes the change into open Power BI Desktop via the external-changes flow
+- Supports undo and pushes the change into the open Power BI Desktop window through the external-changes flow
 
 *Use case:* a sales model with 60 categorical columns — the tool configures all sort orders in one click instead of an afternoon of clicks.
 
@@ -102,9 +102,9 @@ Power BI ships a friendly UI for **RLS** (row-level security), but no equivalent
 
 - Pick a role and hide an entire table or individual columns with toggles
 - Stage changes, review them, then apply to the model's role TMDL
-- Validation flags relationship-chain breaks and redundant rules, and it understands the TMDL shorthand Power BI itself writes
+- Validation flags relationship-chain breaks and redundant rules, and it understands the TMDL shorthand that Power BI itself writes
 
-*Use case:* your *Auditor* role shouldn't see the `Salaries` table at all, and *Recruiters* shouldn't see `Compensation`. OLS configures it in one pass — and it can live in the same role as your existing RLS filters.
+*Use case:* your *Auditor* role shouldn't see the `Salaries` table at all, and *Recruiters* shouldn't see `Compensation`. Object Security configures it all in one pass — and those rules can live in the same role as your existing RLS filters.
 
 <p align="center">
   <img src="docs/screenshots/object-security.png" alt="Object Security" width="800">
@@ -141,7 +141,7 @@ Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php):
 ```powershell
 pwsh -ExecutionPolicy Bypass -File distribution/installer/build-installers.ps1 -Version 1.0.0
 ```
-Output in `distribution/installer/output/`. Installers are per-user, register with Power BI, and ship an uninstaller.
+Output in `distribution/installer/output/`. The installers are per-user, register with Power BI, and ship with an uninstaller.
 
 ---
 

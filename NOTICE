@@ -1,11 +1,35 @@
 Singular Tools for Power BI
 Copyright 2026 Jenish Mangukiya
 
-This product is an independent, community-built tool for Power BI Desktop
-authors. It is not affiliated with, endorsed by, or sponsored by Microsoft
-Corporation. Power BI and Microsoft are trademarks or registered trademarks
-of Microsoft Corporation in the United States and/or other countries.
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This product includes software developed at the Apache Software Foundation
-and various sources under their respective licenses. See the LICENSE file
-for details.
+--------------------------------------------------------------------
+Trademarks
+--------------------------------------------------------------------
+
+Singular Tools for Power BI is an independent, community-built tool. It is
+not affiliated with, endorsed by, or sponsored by Microsoft Corporation.
+
+Microsoft, Power BI, Microsoft Fabric, Windows, and the Microsoft logos are
+trademarks or registered trademarks of Microsoft Corporation in the United
+States and/or other countries. All other trademarks are the property of
+their respective owners.
+
+The Microsoft, Power BI, and Microsoft Fabric logos included in this
+repository are used solely to describe compatibility with, and the ecosystem
+of, those products.
+
+--------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------
+
+This product builds on and redistributes the following third-party
+components. Each remains under its own license and copyright.
+
+  * Microsoft Windows App SDK  - MIT License - (c) Microsoft Corporation
+  * Microsoft Windows SDK Build Tools - MIT License - (c) Microsoft Corporation
+  * xUnit.net (test only)     - Apache License 2.0 - (c) .NET Foundation
+  * coverlet (test only)      - MIT License - (c) coverlet contributors
+
+Full license texts for these components are available from their respective
+project repositories and NuGet packages.
