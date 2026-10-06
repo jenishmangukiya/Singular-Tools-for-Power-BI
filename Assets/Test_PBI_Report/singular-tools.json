@@ -53,9 +53,7 @@
         {
           "name": "EXtra",
           "visiblePageIds": [
-            "62703fb0a0b7ad3cdbcc",
-            "421308d274e5b5952b47",
-            "6ce61a33dfeca0131c91"
+            "03d109aac2ba0b0705c0"
           ],
           "workspaceNames": [
             "My workspace",
@@ -67,9 +65,77 @@
     "publishMulti": {
       "workspaces": []
     },
+    "brokenVisuals": {
+      "autoFixCosmetic": true,
+      "remaps": [
+        {
+          "oldEntity": "financials",
+          "oldProperty": "Countrys",
+          "newEntity": "financials",
+          "newProperty": "Custom",
+          "recordedUtc": "2026-10-05T00:56:43.7652811+00:00"
+        },
+        {
+          "oldEntity": "financials",
+          "oldProperty": "Custom",
+          "newEntity": "financials",
+          "newProperty": "Country",
+          "recordedUtc": "2026-10-05T01:49:11.8542297+00:00"
+        },
+        {
+          "oldEntity": "financials",
+          "oldProperty": "Month Name",
+          "newEntity": "financials",
+          "newProperty": "Monthh",
+          "recordedUtc": "2026-10-05T01:51:13.2105164+00:00"
+        },
+        {
+          "oldEntity": "RAW_DATA",
+          "oldProperty": "Eemail",
+          "newEntity": "RAW_DATA",
+          "newProperty": "email",
+          "recordedUtc": "2026-10-06T01:29:11.2168410+00:00"
+        },
+        {
+          "oldEntity": "RAW_DATA",
+          "oldProperty": "email",
+          "newEntity": "RAW_DATA",
+          "newProperty": "Eemail",
+          "recordedUtc": "2026-10-06T00:43:30.9175647+00:00"
+        },
+        {
+          "oldEntity": "RAW_DATA",
+          "oldProperty": "name",
+          "newEntity": "RAW_DATA",
+          "newProperty": "ssname",
+          "recordedUtc": "2026-10-05T22:17:50.4397074+00:00"
+        },
+        {
+          "oldEntity": "RAW_DATA",
+          "oldProperty": "phone",
+          "newEntity": "RAW_DATA",
+          "newProperty": "phoneno",
+          "recordedUtc": "2026-10-05T22:17:50.4397074+00:00"
+        },
+        {
+          "oldEntity": "RAW_DATA",
+          "oldProperty": "phoneno",
+          "newEntity": "RAW_DATA",
+          "newProperty": "phone",
+          "recordedUtc": "2026-10-05T22:27:07.5449716+00:00"
+        },
+        {
+          "oldEntity": "RAW_DATA",
+          "oldProperty": "ssname",
+          "newEntity": "RAW_DATA",
+          "newProperty": "name",
+          "recordedUtc": "2026-10-05T22:27:07.5449716+00:00"
+        }
+      ],
+      "lastScanUtc": "2026-10-06T02:57:40.3195790+00:00"
+    },
     "sortByColumn": {
-      "suffix": "_ord",
-      "excluded": []
+      "suffix": "_Num"
     }
   },
   "schemaVersion": 1,

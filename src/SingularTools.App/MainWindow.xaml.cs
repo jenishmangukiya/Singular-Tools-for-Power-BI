@@ -16,6 +16,9 @@ public sealed partial class MainWindow : Window
 {
     private IntPtr _hwnd = IntPtr.Zero;
 
+    /// <summary>Applies and persists the light/dark theme chosen from the footer.</summary>
+    private readonly ThemeController _theme;
+
     /// <summary>How often the "more than one Power BI report" guard re-checks.</summary>
     private static readonly TimeSpan ReportGuardInterval = TimeSpan.FromMilliseconds(1500);
 
@@ -83,6 +86,10 @@ public sealed partial class MainWindow : Window
 
         BuildToolNavigation();
 
+        _theme = new ThemeController(this);
+        _theme.Initialize();
+        UpdateThemeToggleVisual();
+
         Activated += MainWindow_Activated;
         Closed += MainWindow_Closed;
         // StartReportGuard(); // TEMP DISABLED for multi-report testing.
@@ -108,21 +115,77 @@ public sealed partial class MainWindow : Window
     {
         ToolNav.MenuItems.Clear();
 
-        foreach (var tool in ToolRegistry.Tools)
+        // Home is the launcher rather than a tool, so it sits alone above a
+        // divider that separates it from the actual tools.
+        var home = ToolRegistry.Tools.FirstOrDefault(
+            t => string.Equals(t.Id, "home", StringComparison.OrdinalIgnoreCase));
+
+        if (home != null)
         {
-            var item = new NavigationViewItem
-            {
-                Content = tool.Title,
-                Tag = tool.Id,
-                Icon = new FontIcon { Glyph = tool.Glyph }
-            };
-            ToolTipService.SetToolTip(item, tool.Description);
-            ToolNav.MenuItems.Add(item);
+            ToolNav.MenuItems.Add(CreateNavItem(home));
         }
 
-        if (ToolNav.MenuItems.FirstOrDefault() is NavigationViewItem first)
+        ToolNav.MenuItems.Add(new NavigationViewItemSeparator());
+
+        foreach (var tool in ToolRegistry.Tools)
+        {
+            if (ReferenceEquals(tool, home)) continue;
+            ToolNav.MenuItems.Add(CreateNavItem(tool));
+        }
+
+        if (ToolNav.MenuItems.OfType<NavigationViewItem>().FirstOrDefault() is NavigationViewItem first)
         {
             ToolNav.SelectedItem = first;
+        }
+    }
+
+    private static NavigationViewItem CreateNavItem(ToolDescriptor tool)
+    {
+        var item = new NavigationViewItem
+        {
+            Content = tool.Title,
+            Tag = tool.Id,
+            Icon = new FontIcon { Glyph = tool.Glyph }
+        };
+        ToolTipService.SetToolTip(item, tool.Description);
+        return item;
+    }
+
+    /// <summary>
+    /// Handles the footer theme action. <c>SelectsOnInvoked</c> is false on that
+    /// item, so it raises ItemInvoked without disturbing the selected tool.
+    /// </summary>
+    private void ToolNav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItemContainer is FrameworkElement { Tag: string tag } &&
+            string.Equals(tag, "theme-toggle", StringComparison.Ordinal))
+        {
+            ToggleTheme();
+        }
+    }
+
+    private void ToggleTheme()
+    {
+        _theme.Toggle();
+        UpdateThemeToggleVisual();
+    }
+
+    /// <summary>Points the footer item at the theme a click would switch to.</summary>
+    private void UpdateThemeToggleVisual()
+    {
+        if (ThemeToggleItem == null || ThemeToggleIcon == null) return;
+
+        if (_theme.IsDark)
+        {
+            ThemeToggleItem.Content = "Light mode";
+            ThemeToggleIcon.Glyph = "\uE706"; // Brightness (sun)
+            ToolTipService.SetToolTip(ThemeToggleItem, "Switch to the light theme");
+        }
+        else
+        {
+            ThemeToggleItem.Content = "Dark mode";
+            ThemeToggleIcon.Glyph = "\uE708"; // QuietHours (moon)
+            ToolTipService.SetToolTip(ThemeToggleItem, "Switch to the dark theme");
         }
     }
 

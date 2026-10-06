@@ -30,6 +30,17 @@ public sealed class ReportConfig
     public const string SortByColumnFeature = "sortByColumn";
     public const string SuffixKey = "suffix";
     public const string ExcludedKey = "excluded";
+    public const string BrokenVisualsFeature = "brokenVisuals";
+
+    /// <summary>
+    /// The persisted section key is deliberately still <c>brokenVisuals</c> even though the tool
+    /// is now called Field Repair. It is written into every author's <c>singular-tools.json</c>;
+    /// renaming it would orphan their saved remaps and last-scan timestamp. Display names change,
+    /// stored keys do not.
+    /// </summary>
+    public const string RemapsKey = "remaps";
+    public const string AutoFixKey = "autoFixCosmetic";
+    public const string LastScanKey = "lastScanUtc";
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -270,6 +281,125 @@ public sealed class ReportConfig
 
         section[ExcludedKey] = array;
         SetFeatureSection(SortByColumnFeature, section);
+    }
+
+    /// <summary>
+    /// Reads the remembered broken-visual remappings (empty when absent). Later entries win
+    /// over earlier ones for the same old field, so the most recent decision is the one
+    /// offered first on the next scan.
+    /// </summary>
+    public List<FieldRemap> GetFieldRemaps()
+    {
+        var remaps = new List<FieldRemap>();
+        if (FeatureSection(BrokenVisualsFeature) is not JsonObject section) return remaps;
+        if (section[RemapsKey] is not JsonArray array) return remaps;
+
+        foreach (var node in array)
+        {
+            if (node is not JsonObject entry) continue;
+
+            var oldEntity = entry["oldEntity"]?.ToString() ?? string.Empty;
+            var oldProperty = entry["oldProperty"]?.ToString() ?? string.Empty;
+            var newEntity = entry["newEntity"]?.ToString() ?? string.Empty;
+            var newProperty = entry["newProperty"]?.ToString() ?? string.Empty;
+
+            // A half-written entry is useless and would silently do nothing on replay.
+            if (string.IsNullOrWhiteSpace(oldProperty) || string.IsNullOrWhiteSpace(newProperty)) continue;
+
+            var recorded = DateTimeOffset.MinValue;
+            if (entry["recordedUtc"]?.ToString() is string raw &&
+                DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+            {
+                recorded = parsed;
+            }
+
+            remaps.Add(new FieldRemap
+            {
+                OldEntity = oldEntity,
+                OldProperty = oldProperty,
+                NewEntity = newEntity,
+                NewProperty = newProperty,
+                RecordedUtc = recorded
+            });
+        }
+
+        return remaps;
+    }
+
+    /// <summary>
+    /// Writes the remembered remappings, preserving every other key in the section and every
+    /// other feature. One entry per old field: a newer mapping replaces an older one rather
+    /// than accumulating duplicates that would all replay.
+    /// </summary>
+    public void SetFieldRemaps(IEnumerable<FieldRemap> remaps)
+    {
+        var section = FeatureSection(BrokenVisualsFeature) as JsonObject ?? new JsonObject();
+
+        var latest = new Dictionary<string, FieldRemap>(StringComparer.OrdinalIgnoreCase);
+        foreach (var remap in remaps ?? Enumerable.Empty<FieldRemap>())
+        {
+            if (remap == null || string.IsNullOrWhiteSpace(remap.OldProperty)) continue;
+            if (string.IsNullOrWhiteSpace(remap.NewProperty)) continue;
+            latest[remap.OldKey] = remap;
+        }
+
+        var array = new JsonArray();
+        foreach (var remap in latest.Values.OrderBy(r => r.OldKey, StringComparer.OrdinalIgnoreCase))
+        {
+            array.Add(new JsonObject
+            {
+                ["oldEntity"] = remap.OldEntity,
+                ["oldProperty"] = remap.OldProperty,
+                ["newEntity"] = remap.NewEntity,
+                ["newProperty"] = remap.NewProperty,
+                ["recordedUtc"] = remap.RecordedUtc.ToString("O")
+            });
+        }
+
+        section[RemapsKey] = array;
+        SetFeatureSection(BrokenVisualsFeature, section);
+    }
+
+    /// <summary>
+    /// Whether cosmetic-only renames may be matched automatically. Defaults to false so a
+    /// repair is never applied without the author seeing it.
+    /// </summary>
+    public bool GetBrokenVisualsAutoFix() =>
+        FeatureSection(BrokenVisualsFeature)?[AutoFixKey]?.GetValue<bool>() ?? false;
+
+    /// <summary>Remembers the cosmetic auto-fix preference.</summary>
+    public void SetBrokenVisualsAutoFix(bool enabled)
+    {
+        var section = FeatureSection(BrokenVisualsFeature) as JsonObject ?? new JsonObject();
+        section[AutoFixKey] = enabled;
+        SetFeatureSection(BrokenVisualsFeature, section);
+    }
+
+    /// <summary>
+    /// When this report was last checked by Field Repair, or null if it never has been.
+    /// </summary>
+    /// <remarks>
+    /// Kept with the report rather than per machine so the answer to "was this report
+    /// checked?" is the same for everyone who opens it.
+    /// </remarks>
+    public DateTimeOffset? GetBrokenVisualsLastScan()
+    {
+        var raw = FeatureSection(BrokenVisualsFeature)?[LastScanKey]?.ToString();
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        return DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    /// <summary>Records that the report was checked at the given moment (UTC).</summary>
+    public void SetBrokenVisualsLastScan(DateTimeOffset scannedUtc)
+    {
+        var section = FeatureSection(BrokenVisualsFeature) as JsonObject ?? new JsonObject();
+        section[LastScanKey] = scannedUtc.ToUniversalTime().ToString("O");
+        SetFeatureSection(BrokenVisualsFeature, section);
     }
 
     private int ReadSchemaVersion()

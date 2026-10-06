@@ -125,6 +125,63 @@ public sealed class ReportWorkspace : IDisposable
         => ApplyEditCore(edit, managerWritesInternally, syncFirst);
 
     /// <summary>
+    /// Steps the shared history back one edit and restores it. Returns false when there is
+    /// nothing to undo.
+    /// </summary>
+    /// <remarks>
+    /// Tools must call this rather than <c>ApplyEdit(m =&gt; m.RestoreFromSnapshot(...))</c>.
+    /// ApplyEdit commits the result as a new edit, and committing after an undo is precisely what
+    /// discards the redo branch — so routing an undo through it leaves Redo permanently disabled.
+    /// Pairing the history step with the restore here is what makes that mistake impossible.
+    /// </remarks>
+    public bool Undo()
+    {
+        var snapshot = _history?.Undo();
+        if (string.IsNullOrEmpty(snapshot)) return false;
+
+        RestoreSnapshot(snapshot);
+        return true;
+    }
+
+    /// <summary>Steps the shared history forward one edit and restores it. Returns false when
+    /// there is nothing to redo.</summary>
+    /// <inheritdoc cref="Undo"/>
+    public bool Redo()
+    {
+        var snapshot = _history?.Redo();
+        if (string.IsNullOrEmpty(snapshot)) return false;
+
+        RestoreSnapshot(snapshot);
+        return true;
+    }
+
+    /// <summary>
+    /// Restores a history snapshot without recording it as a new edit.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not routed through <see cref="ApplyEditCore"/>: that calls
+    /// <c>Commit()</c>, and a commit is "a new edit happened from here", which truncates the redo
+    /// branch. Restoring a snapshot *is* the undo, so it must leave the history index alone.
+    ///
+    /// The signature is recomputed because the restore rewrites files on disk; without that the
+    /// watcher would read our own write as an external change, reload, and reset history — losing
+    /// the very undo/redo the author is using.
+    /// </remarks>
+    private void RestoreSnapshot(string snapshot)
+    {
+        Manager.RestoreFromSnapshot(snapshot);
+
+        _signature = ComputeSignature();
+        RaiseChanged();
+
+        // Power BI is showing the pre-undo report, so let it pick the restore up like any edit.
+        if (HasReport)
+        {
+            _powerBiSync.RequestApply();
+        }
+    }
+
+    /// <summary>
     /// Asks Power BI Desktop to save its open report so the author's unsaved edits
     /// reach the .pbip project folder. Called when the app regains focus: the tools
     /// read that folder, so without this they would show stale data. Coalesced and
@@ -384,7 +441,22 @@ public sealed class ReportWorkspace : IDisposable
     {
         _history?.Dispose();
         _history = new ReportEditHistory();
-        _history.Reset(Manager.PagesDirectoryPath);
+        _history.Reset(Manager.PagesDirectoryPath, OutsidePagesEditTargets());
+    }
+
+    /// <summary>
+    /// Files a tool may edit that live outside the pages directory, so undo can restore them.
+    /// </summary>
+    /// <remarks>
+    /// Report-level filters sit in <c>definition/report.json</c>. Without nominating it here, a
+    /// Field Repair repair of a report filter would survive an Undo and leave the report
+    /// half-reverted: visuals back to the old field, the filter still pointing at the new one.
+    /// </remarks>
+    private IEnumerable<string> OutsidePagesEditTargets()
+    {
+        if (!HasReport) yield break;
+
+        yield return Path.Combine(Manager.ReportFolderPath, "definition", "report.json");
     }
 
     private string ComputeSignature()

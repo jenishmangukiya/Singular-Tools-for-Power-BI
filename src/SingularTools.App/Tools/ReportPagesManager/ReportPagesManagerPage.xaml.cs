@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Media;
 using SingularTools.Core;
 using SingularTools.Core.Models;
 using SingularTools_App.Shell;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace SingularTools_App.Tools.ReportPagesManager;
 
@@ -88,6 +89,24 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
     private bool _suppressNavigation;
     private bool _pendingRefresh;
 
+    /// <summary>Ids of the pages a drag started with, so the moved block can be reselected.</summary>
+    private List<string> _dragIds = new();
+
+    /// <summary>The row the current drag was grabbed from, kept visible while the rest dim.</summary>
+    private string _dragSourceId = string.Empty;
+
+    /// <summary>Selected rows dimmed during a multi-item drag, with their original opacity.</summary>
+    private readonly List<(UIElement Element, double Opacity)> _liftedRows = new();
+
+    /// <summary>Which direction a batch move should take the current selection.</summary>
+    private enum PageMoveMode
+    {
+        Up,
+        Down,
+        Top,
+        Bottom
+    }
+
     /// <summary>True while the Go-to-page toggle is on: selection drives Desktop instead of editing.</summary>
     public bool IsGoToPageMode => GoToPageBtn?.IsChecked == true;
 
@@ -163,6 +182,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     public void RefreshList()
     {
+        ClearLiftedRows();
+
         _suppressNavigation = true;
         _items.Clear();
 
@@ -191,6 +212,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
         _suppressNavigation = false;
         UpdateEmptyStates();
+        UpdateSelectionChrome();
         WireGripCursors();
     }
 
@@ -258,31 +280,34 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
-        var history = App.Workspace.History;
-        if (IsGoToPageMode || history == null || !history.CanUndo) return;
-        ApplySnapshot(history.Undo(), "Undid the last change.");
+        if (IsGoToPageMode) return;
+        ApplySnapshot(undo: true, "Undid the last change.");
     }
 
     private void Redo_Click(object sender, RoutedEventArgs e)
     {
-        var history = App.Workspace.History;
-        if (IsGoToPageMode || history == null || !history.CanRedo) return;
-        ApplySnapshot(history.Redo(), "Redid the last change.");
+        if (IsGoToPageMode) return;
+        ApplySnapshot(undo: false, "Redid the last change.");
     }
 
-    private void ApplySnapshot(string? snapshot, string message)
+    /// <summary>
+    /// Steps the shared history and refreshes the list.
+    /// </summary>
+    /// <remarks>
+    /// Goes through <see cref="ReportWorkspace.Undo"/>/<see cref="ReportWorkspace.Redo"/> rather
+    /// than <c>ApplyEdit</c>: ApplyEdit records the restore as a new edit, which truncates the
+    /// redo branch and leaves Redo permanently disabled.
+    /// </remarks>
+    private void ApplySnapshot(bool undo, string message)
     {
-        if (string.IsNullOrEmpty(snapshot))
-        {
-            UpdateHistoryButtons();
-            return;
-        }
-
         try
         {
-            App.Workspace.ApplyEdit(m => m.RestoreFromSnapshot(snapshot), managerWritesInternally: true, syncFirst: false);
-            RefreshList();
-            ShowStatus(InfoBarSeverity.Informational, message);
+            var moved = undo ? App.Workspace.Undo() : App.Workspace.Redo();
+            if (moved)
+            {
+                RefreshList();
+                ShowStatus(InfoBarSeverity.Informational, message);
+            }
         }
         catch (Exception ex)
         {
@@ -460,17 +485,95 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     }
 
+    private void PagesListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var selection = SelectedIdsInOrder();
+        var dragged = e.Items.OfType<PageItemViewModel>().Select(i => i.Id).ToList();
+
+        // A multi-selection drag starts on one of its rows, so the whole set moves and
+        // is represented as one lift. Falls back to what the control reported.
+        _dragIds = selection.Count > 1
+                   && !string.IsNullOrEmpty(_dragSourceId)
+                   && selection.Contains(_dragSourceId, StringComparer.OrdinalIgnoreCase)
+            ? selection
+            : dragged;
+
+        LiftSelectedRows();
+    }
+
     private void PagesListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
+        // Restore any rows dimmed for the drag before the list is rebuilt (or left as-is
+        // when the drop landed outside the list).
+        ClearLiftedRows();
+
         if (IsGoToPageMode) return;
+
+        // A drop outside the list is not a reorder; leave the order alone.
+        if (args.DropResult != DataPackageOperation.Move)
+        {
+            _dragIds.Clear();
+            _dragSourceId = string.Empty;
+            return;
+        }
 
         var orderedIds = _items.Select(i => i.Id).ToList();
         if (orderedIds.Count > 0)
         {
+            var moved = _dragIds.ToList();
             App.Workspace.ApplyEdit(m => m.ReorderPages(orderedIds));
             RefreshList();
-            ShowStatus(InfoBarSeverity.Success, "Page order updated via drag-and-drop.");
+
+            if (moved.Count > 0)
+            {
+                SelectIds(moved);
+                ShowStatus(InfoBarSeverity.Success,
+                    moved.Count == 1 ? "Moved 1 page." : $"Moved {moved.Count} pages.");
+            }
+            else
+            {
+                ShowStatus(InfoBarSeverity.Success, "Page order updated via drag-and-drop.");
+            }
         }
+
+        _dragIds.Clear();
+        _dragSourceId = string.Empty;
+    }
+
+    /// <summary>
+    /// Hides every selected row except the one under the pointer, so a multi-page drag
+    /// reads as the whole selection leaving the list and lifting into the drag visual,
+    /// instead of only the grabbed row moving while the rest sit in place.
+    /// </summary>
+    private void LiftSelectedRows()
+    {
+        ClearLiftedRows();
+
+        if (_dragIds.Count <= 1) return;
+
+        foreach (var item in _items)
+        {
+            if (!_dragIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase)) continue;
+
+            // Keep the grabbed row visible: WinUI captures the drag visual from it.
+            if (string.Equals(item.Id, _dragSourceId, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (PagesListView.ContainerFromItem(item) is not UIElement container) continue;
+
+            _liftedRows.Add((container, container.Opacity));
+            container.Opacity = 0;
+        }
+    }
+
+    /// <summary>Puts the opacity of rows dimmed for a drag back the way it was.</summary>
+    private void ClearLiftedRows()
+    {
+        foreach (var (element, opacity) in _liftedRows)
+        {
+            element.Opacity = opacity;
+        }
+
+        _liftedRows.Clear();
     }
 
     private void OverflowButton_Click(object sender, RoutedEventArgs e)
@@ -479,8 +582,10 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         if (sender is Button btn && btn.Tag is string id)
         {
             var item = _items.FirstOrDefault(i => i.Id == id);
-            if (item != null)
+            if (item != null && !PagesListView.SelectedItems.Contains(item))
             {
+                // Only select the row when it is not already part of a multi-selection,
+                // so opening its menu cannot destroy the selection being acted on.
                 PagesListView.SelectedItem = item;
             }
         }
@@ -597,18 +702,138 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         }
     }
 
-    private void MoveUp_Click(object sender, RoutedEventArgs e)
+    private void MoveUp_Click(object sender, RoutedEventArgs e) => MoveFromMenu(sender, PageMoveMode.Up);
+
+    private void MoveDown_Click(object sender, RoutedEventArgs e) => MoveFromMenu(sender, PageMoveMode.Down);
+
+    // ---- Batch move (toolbar dropdown + selection-aware context menu) ----
+
+    private void MoveSelectedUp_Click(object sender, RoutedEventArgs e) => MoveSelection(PageMoveMode.Up);
+
+    private void MoveSelectedDown_Click(object sender, RoutedEventArgs e) => MoveSelection(PageMoveMode.Down);
+
+    private void MoveSelectedToTop_Click(object sender, RoutedEventArgs e) => MoveSelection(PageMoveMode.Top);
+
+    private void MoveSelectedToBottom_Click(object sender, RoutedEventArgs e) => MoveSelection(PageMoveMode.Bottom);
+
+    /// <summary>
+    /// Moves the whole selection when the clicked row is part of it, otherwise moves
+    /// just that row. Shared by the row context menu and the per-row overflow flyout.
+    /// </summary>
+    private void MoveFromMenu(object sender, PageMoveMode mode)
     {
         if (IsGoToPageMode) return;
+
         var item = GetContextItem(sender);
-        if (item != null) MoveUp(item.Id);
+        if (item == null) return;
+
+        var selection = SelectedIdsInOrder();
+        if (selection.Count > 1 && selection.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            MoveSelection(mode);
+            return;
+        }
+
+        switch (mode)
+        {
+            case PageMoveMode.Up: MoveUp(item.Id); break;
+            case PageMoveMode.Down: MoveDown(item.Id); break;
+            case PageMoveMode.Top: MoveToTop(item.Id); break;
+            case PageMoveMode.Bottom: MoveToBottom(item.Id); break;
+        }
     }
 
-    private void MoveDown_Click(object sender, RoutedEventArgs e)
+    /// <summary>Moves every selected page as one block, then keeps that block selected.</summary>
+    private void MoveSelection(PageMoveMode mode)
     {
         if (IsGoToPageMode) return;
-        var item = GetContextItem(sender);
-        if (item != null) MoveDown(item.Id);
+
+        var ids = SelectedIdsInOrder();
+        if (ids.Count == 0) return;
+
+        App.Workspace.ApplyEdit(m =>
+        {
+            switch (mode)
+            {
+                case PageMoveMode.Up: m.MovePagesUp(ids); break;
+                case PageMoveMode.Down: m.MovePagesDown(ids); break;
+                case PageMoveMode.Top: m.MovePagesToTop(ids); break;
+                case PageMoveMode.Bottom: m.MovePagesToBottom(ids); break;
+            }
+        });
+
+        RefreshList();
+        SelectIds(ids);
+        ShowStatus(InfoBarSeverity.Success,
+            ids.Count == 1 ? "Moved 1 page." : $"Moved {ids.Count} pages.");
+    }
+
+    /// <summary>The currently selected page ids, in report order.</summary>
+    private List<string> SelectedIdsInOrder()
+    {
+        var selected = new HashSet<PageItemViewModel>(PagesListView.SelectedItems.OfType<PageItemViewModel>());
+        return _items.Where(i => selected.Contains(i)).Select(i => i.Id).ToList();
+    }
+
+    /// <summary>Selects the pages with the given ids without triggering navigation.</summary>
+    private void SelectIds(IEnumerable<string> ids)
+    {
+        var wanted = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
+
+        var wasSuppressed = _suppressNavigation;
+        _suppressNavigation = true;
+        try
+        {
+            PagesListView.SelectedItems.Clear();
+
+            PageItemViewModel? first = null;
+            foreach (var item in _items)
+            {
+                if (!wanted.Contains(item.Id)) continue;
+                PagesListView.SelectedItems.Add(item);
+                first ??= item;
+            }
+
+            if (first != null) PagesListView.ScrollIntoView(first);
+        }
+        finally
+        {
+            _suppressNavigation = wasSuppressed;
+        }
+
+        UpdateSelectionChrome();
+    }
+
+    /// <summary>Keeps the Move button and the list hint in step with the selection.</summary>
+    private void UpdateSelectionChrome()
+    {
+        var count = PagesListView?.SelectedItems?.Count ?? 0;
+        var total = _items.Count;
+
+        if (MoveButton != null)
+        {
+            MoveButton.IsEnabled = !IsGoToPageMode && count > 0;
+        }
+
+        if (MoveButtonText != null)
+        {
+            MoveButtonText.Text = count > 0 ? $"Move ({count})" : "Move";
+        }
+
+        if (ListHintText == null) return;
+
+        if (IsGoToPageMode)
+        {
+            ListHintText.Text = "Select a page to navigate the open report";
+        }
+        else if (count > 1)
+        {
+            ListHintText.Text = $"{count} of {total} pages selected \u00B7 drag to move them together";
+        }
+        else
+        {
+            ListHintText.Text = "Drag rows to reorder \u00B7 Ctrl/Shift-click to select multiple";
+        }
     }
 
     private PageItemViewModel? GetContextItem(object sender)
@@ -656,19 +881,9 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         ShowStatus(InfoBarSeverity.Success, "Updated page visibility.");
     }
 
-    private void ContextMenu_MoveToTop_Click(object sender, RoutedEventArgs e)
-    {
-        if (IsGoToPageMode) return;
-        var item = GetContextItem(sender);
-        if (item != null) MoveToTop(item.Id);
-    }
+    private void ContextMenu_MoveToTop_Click(object sender, RoutedEventArgs e) => MoveFromMenu(sender, PageMoveMode.Top);
 
-    private void ContextMenu_MoveToBottom_Click(object sender, RoutedEventArgs e)
-    {
-        if (IsGoToPageMode) return;
-        var item = GetContextItem(sender);
-        if (item != null) MoveToBottom(item.Id);
-    }
+    private void ContextMenu_MoveToBottom_Click(object sender, RoutedEventArgs e) => MoveFromMenu(sender, PageMoveMode.Bottom);
 
     private void ContextMenu_Delete_Click(object sender, RoutedEventArgs e)
     {
@@ -779,6 +994,18 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         }
     }
 
+    /// <summary>
+    /// Remembers which row a press landed on, so a later drag knows which row keeps
+    /// its drag visual and which of the selection should dim away.
+    /// </summary>
+    private void Row_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is PageItemViewModel vm)
+        {
+            _dragSourceId = vm.Id;
+        }
+    }
+
     private static T? FindDescendant<T>(DependencyObject root, string? name) where T : FrameworkElement
     {
         int count = VisualTreeHelper.GetChildrenCount(root);
@@ -880,6 +1107,9 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         SortButton.IsEnabled = !mode;
         UpdateHistoryButtons();
 
+        // Editing works on one page at a time; Go-to-page only ever navigates one.
+        PagesListView.SelectionMode = mode ? ListViewSelectionMode.Single : ListViewSelectionMode.Extended;
+
         PagesListView.CanDragItems = !mode;
         PagesListView.CanReorderItems = !mode;
         PagesListView.AllowDrop = !mode;
@@ -920,6 +1150,7 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
         }
 
         WireGripCursors();
+        UpdateSelectionChrome();
         App.Log($"Go-to-page mode {(mode ? "enabled" : "disabled")}.");
     }
 
@@ -933,6 +1164,8 @@ public sealed partial class ReportPagesManagerPage : Page, IToolPage
 
     private void PagesListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        UpdateSelectionChrome();
+
         if (_suppressNavigation || GoToPageBtn?.IsChecked != true)
         {
             return;

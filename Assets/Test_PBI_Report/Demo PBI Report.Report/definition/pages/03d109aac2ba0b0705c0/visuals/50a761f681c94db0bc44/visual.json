@@ -1,0 +1,55 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.13.0/schema.json",
+  "name": "50a761f681c94db0bc44",
+  "position": {
+    "x": 1653.7651821862351,
+    "y": 557.73279352226723,
+    "z": 2,
+    "height": 522.753036437247,
+    "width": 266.23481781376523
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "RAW_DATA"
+                    }
+                  },
+                  "Property": "phone"
+                }
+              },
+              "queryRef": "RAW_DATA.phone",
+              "nativeQueryRef": "phone"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "e917b0209c3e5363a1bf",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "RAW_DATA"
+              }
+            },
+            "Property": "phone"
+          }
+        },
+        "type": "Categorical"
+      }
+    ]
+  }
+}

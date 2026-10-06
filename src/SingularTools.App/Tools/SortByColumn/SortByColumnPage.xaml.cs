@@ -290,7 +290,6 @@ public sealed partial class SortByColumnPage : Page, IToolPage
             ModelHintText.Text = string.IsNullOrEmpty(_projectRoot)
                 ? "Open a Power BI project (.pbip) to sort its tables."
                 : $"No .SemanticModel folder next to {_projectRoot}.";
-            PowerBiWarning.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -298,7 +297,6 @@ public sealed partial class SortByColumnPage : Page, IToolPage
         ModelHintText.Text = _model.HasTmdlDefinition
             ? $"{_model.Tables.Count} tables \u00B7 {_model.FolderPath}"
             : _model.FolderPath;
-        PowerBiWarning.Visibility = _model.HasTmdlDefinition ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdatePlanSummary()

@@ -994,31 +994,32 @@ public sealed partial class SemanticColorManagerPage : Page, IToolPage
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
-        var history = App.Workspace.History;
-        if (history == null || !history.CanUndo) return;
-        ApplySnapshot(history.Undo(), "Undid the last color change.");
+        ApplySnapshot(undo: true, "Undid the last color change.");
     }
 
     private void Redo_Click(object sender, RoutedEventArgs e)
     {
-        var history = App.Workspace.History;
-        if (history == null || !history.CanRedo) return;
-        ApplySnapshot(history.Redo(), "Redid the last color change.");
+        ApplySnapshot(undo: false, "Redid the last color change.");
     }
 
-    private void ApplySnapshot(string? snapshot, string message)
+    /// <summary>
+    /// Steps the shared history and re-syncs the swatches.
+    /// </summary>
+    /// <remarks>
+    /// Goes through <see cref="ReportWorkspace.Undo"/>/<see cref="ReportWorkspace.Redo"/> rather
+    /// than <c>ApplyEdit</c>: ApplyEdit records the restore as a new edit, which truncates the
+    /// redo branch and leaves Redo permanently disabled.
+    /// </remarks>
+    private void ApplySnapshot(bool undo, string message)
     {
-        if (string.IsNullOrEmpty(snapshot))
-        {
-            UpdateHistoryButtons();
-            return;
-        }
-
         try
         {
-            App.Workspace.ApplyEdit(m => m.RestoreFromSnapshot(snapshot), managerWritesInternally: true, syncFirst: false);
-            SyncColorsFromReport();
-            ToastService.Show(message, ToastSeverity.Informational);
+            var moved = undo ? App.Workspace.Undo() : App.Workspace.Redo();
+            if (moved)
+            {
+                SyncColorsFromReport();
+                ToastService.Show(message, ToastSeverity.Informational);
+            }
         }
         catch (Exception ex)
         {

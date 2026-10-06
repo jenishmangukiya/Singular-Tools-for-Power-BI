@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using SingularTools.Core;
 using Xunit;
@@ -17,18 +18,52 @@ public class PowerBiDetectorTests
     [Fact]
     public void EnumeratePowerBiWindows_WithNoDesktop_ReturnsEmpty()
     {
-        // No Power BI Desktop in a test run: the guard must report zero, not throw.
-        Assert.Empty(PowerBiDetector.EnumeratePowerBiWindows());
-        Assert.Equal(0, PowerBiDetector.CountOpenPowerBiReports());
+        var windows = PowerBiDetector.EnumeratePowerBiWindows();
+
+        // Enumeration must not throw whether or not Desktop is running. Asserting "always
+        // empty" would only hold on a machine where the author happens to have Power BI
+        // closed, which is exactly the wrong time to find out.
+        if (!IsPowerBiDesktopRunning())
+        {
+            Assert.Empty(windows);
+            Assert.Equal(0, PowerBiDetector.CountOpenPowerBiReports());
+        }
+        else
+        {
+            Assert.NotEmpty(windows);
+            Assert.Equal(windows.Count, PowerBiDetector.CountOpenPowerBiReports());
+        }
+
+        // The invariant that matters either way: every hit is a real, full-size PBIDesktop
+        // window, never a tooltip or an unrelated app whose title mentions Power BI.
+        Assert.All(windows, w =>
+        {
+            Assert.NotEqual(IntPtr.Zero, w.Handle);
+            Assert.True(w.Rect.Width > 200 && w.Rect.Height > 200,
+                $"expected a full-size window, got {w.Rect.Width}x{w.Rect.Height}");
+        });
     }
 
     [Fact]
     public void FindActivePowerBiWindow_WithNoDesktop_ReportsNotFound()
     {
-        Assert.False(PowerBiDetector.FindActivePowerBiWindow(out var hwnd, out var title, out _));
-        Assert.Equal(IntPtr.Zero, hwnd);
-        Assert.Equal(string.Empty, title);
+        if (!IsPowerBiDesktopRunning())
+        {
+            Assert.False(PowerBiDetector.FindActivePowerBiWindow(out var hwnd, out var title, out _));
+            Assert.Equal(IntPtr.Zero, hwnd);
+            Assert.Equal(string.Empty, title);
+            return;
+        }
+
+        // With Desktop open, the guard must find it rather than claiming there is no report.
+        Assert.True(PowerBiDetector.FindActivePowerBiWindow(out var found, out var foundTitle, out _));
+        Assert.NotEqual(IntPtr.Zero, found);
+        Assert.NotEqual(string.Empty, foundTitle);
     }
+
+    /// <summary>True when a PBIDesktop process exists, so the tests can adapt to the machine.</summary>
+    private static bool IsPowerBiDesktopRunning() =>
+        Process.GetProcessesByName("PBIDesktop").Any();
 
     [Theory]
     // "Demo PBI Report • Last saved: Today at 9:36 PM (Power BI Project)"

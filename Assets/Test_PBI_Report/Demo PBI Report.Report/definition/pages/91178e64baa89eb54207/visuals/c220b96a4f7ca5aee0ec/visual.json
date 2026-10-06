@@ -1,0 +1,55 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.13.0/schema.json",
+  "name": "c220b96a4f7ca5aee0ec",
+  "position": {
+    "x": 258.46153846153851,
+    "y": 567.44939271255066,
+    "z": 0,
+    "height": 300,
+    "width": 300
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "RAW_DATA"
+                    }
+                  },
+                  "Property": "email"
+                }
+              },
+              "queryRef": "RAW_DATA.email",
+              "nativeQueryRef": "email"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "136ae961e8254c7c889c",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "RAW_DATA"
+              }
+            },
+            "Property": "email"
+          }
+        },
+        "type": "Categorical"
+      }
+    ]
+  }
+}

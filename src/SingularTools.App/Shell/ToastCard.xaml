@@ -7,58 +7,99 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <!--
+        An elevated notification: acrylic (the same material as a Flyout/TeachingTip)
+        over the Mica backdrop, plus a ThemeShadow so it reads as floating rather
+        than painted on. The severity tint is layered over the acrylic.
+    -->
     <Border
+        x:Name="ToastSurface"
         MaxWidth="380"
-        Padding="12,10"
-        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
         BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-        Style="{StaticResource CardBorderStyle}">
+        BorderThickness="1"
+        CornerRadius="{StaticResource RadiusLarge}">
+        <Border.Shadow>
+            <ThemeShadow />
+        </Border.Shadow>
         <Border.RenderTransform>
             <TranslateTransform x:Name="ToastTransform" X="0" />
         </Border.RenderTransform>
-        <Grid ColumnSpacing="10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
 
-            <Grid
-                Width="18"
-                Height="18"
-                Margin="0,1,0,0"
-                VerticalAlignment="Top">
-                <FontIcon
-                    x:Name="InfoIcon"
-                    FontSize="16"
-                    Foreground="{ThemeResource SystemFillColorAttentionBrush}"
-                    Glyph="&#xE946;"
-                    Visibility="Collapsed" />
-                <FontIcon
-                    x:Name="SuccessIcon"
-                    FontSize="16"
-                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                    Glyph="&#xE73E;"
-                    Visibility="Collapsed" />
-                <FontIcon
-                    x:Name="WarningIcon"
-                    FontSize="16"
-                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                    Glyph="&#xE7BA;"
-                    Visibility="Collapsed" />
-                <FontIcon
-                    x:Name="ErrorIcon"
-                    FontSize="16"
-                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                    Glyph="&#xE783;"
-                    Visibility="Collapsed" />
+        <Grid>
+            <!--  Severity tint: exactly one is shown by Apply().  -->
+            <Border
+                x:Name="InfoTint"
+                Background="{ThemeResource SystemFillColorAttentionBrush}"
+                CornerRadius="{StaticResource RadiusLarge}"
+                IsHitTestVisible="False"
+                Opacity="0.14" />
+            <Border
+                x:Name="SuccessTint"
+                Background="{ThemeResource SystemFillColorSuccessBrush}"
+                CornerRadius="{StaticResource RadiusLarge}"
+                IsHitTestVisible="False"
+                Opacity="0.14"
+                Visibility="Collapsed" />
+            <Border
+                x:Name="WarningTint"
+                Background="{ThemeResource SystemFillColorCautionBrush}"
+                CornerRadius="{StaticResource RadiusLarge}"
+                IsHitTestVisible="False"
+                Opacity="0.14"
+                Visibility="Collapsed" />
+            <Border
+                x:Name="ErrorTint"
+                Background="{ThemeResource SystemFillColorCriticalBrush}"
+                CornerRadius="{StaticResource RadiusLarge}"
+                IsHitTestVisible="False"
+                Opacity="0.14"
+                Visibility="Collapsed" />
+
+            <Grid Padding="14,12" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid
+                    Width="18"
+                    Height="18"
+                    Margin="0,1,0,0"
+                    VerticalAlignment="Top">
+                    <FontIcon
+                        x:Name="InfoIcon"
+                        FontSize="16"
+                        Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                        Glyph="&#xE946;"
+                        Visibility="Collapsed" />
+                    <FontIcon
+                        x:Name="SuccessIcon"
+                        FontSize="16"
+                        Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                        Glyph="&#xE73E;"
+                        Visibility="Collapsed" />
+                    <FontIcon
+                        x:Name="WarningIcon"
+                        FontSize="16"
+                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                        Glyph="&#xE7BA;"
+                        Visibility="Collapsed" />
+                    <FontIcon
+                        x:Name="ErrorIcon"
+                        FontSize="16"
+                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                        Glyph="&#xE783;"
+                        Visibility="Collapsed" />
+                </Grid>
+
+                <TextBlock
+                    x:Name="MessageText"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    TextWrapping="Wrap" />
             </Grid>
-
-            <TextBlock
-                x:Name="MessageText"
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                FontSize="13"
-                TextWrapping="Wrap" />
         </Grid>
     </Border>
 </UserControl>

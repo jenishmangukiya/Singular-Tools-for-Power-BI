@@ -149,3 +149,37 @@ public sealed class SemanticColorApplyResult
     /// <summary>Files written to disk.</summary>
     public int FilesWritten { get; set; }
 }
+
+/// <summary>
+/// A remembered "this field was renamed to that field" decision, so a database rename
+/// that recurs across refresh cycles only has to be answered once.
+/// </summary>
+/// <remarks>
+/// Stored per report rather than per machine: whether <c>financials.Segment</c> became
+/// <c>financials.SalesSegment</c> is a fact about one report's model, not about this
+/// install. Replaying a mapping is still opt-in per scan, because a later rename can
+/// make an old mapping wrong.
+/// </remarks>
+public sealed class FieldRemap
+{
+    /// <summary>The entity the visual used to point at, e.g. "financials".</summary>
+    public string OldEntity { get; set; } = string.Empty;
+
+    /// <summary>The field the visual used to point at, e.g. "Segment".</summary>
+    public string OldProperty { get; set; } = string.Empty;
+
+    /// <summary>The entity that replaced it, e.g. "financials".</summary>
+    public string NewEntity { get; set; } = string.Empty;
+
+    /// <summary>The replacement field, e.g. "SalesSegment".</summary>
+    public string NewProperty { get; set; } = string.Empty;
+
+    /// <summary>When this mapping was recorded, for display and for pruning stale entries.</summary>
+    public DateTimeOffset RecordedUtc { get; set; }
+
+    /// <summary>The "entity.property" form used as the stable identity of the old field.</summary>
+    public string OldKey => (OldEntity + "." + OldProperty).TrimStart('.');
+
+    /// <summary>The "entity.property" form of the replacement.</summary>
+    public string NewKey => (NewEntity + "." + NewProperty).TrimStart('.');
+}

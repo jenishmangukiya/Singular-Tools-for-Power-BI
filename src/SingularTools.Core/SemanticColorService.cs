@@ -94,7 +94,7 @@ public sealed class SemanticColorService
 
         var columnTypes = LoadColumnTypes(manager.ReportFolderPath);
 
-        foreach (var visualPath in EnumerateVisualFiles(pagesDir))
+        foreach (var visualPath in VisualQueryReader.EnumerateVisualFiles(pagesDir))
         {
             var pageId = PageIdOf(pagesDir, visualPath);
             JsonNode? root;
@@ -112,7 +112,7 @@ public sealed class SemanticColorService
             var visualType = root["visual"]?["visualType"]?.ToString() ?? string.Empty;
             if (!IsScannableVisual(visualType)) continue;
 
-            var projections = ExtractProjections(root);
+            var projections = VisualQueryReader.ExtractProjections(root);
             var memberFields = BuildMemberFields(projections, columnTypes);
             var measureFields = BuildMeasureFields(projections);
 
@@ -205,7 +205,7 @@ public sealed class SemanticColorService
 
         var colors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var visualPath in EnumerateVisualFiles(pagesDir, pageFilter))
+        foreach (var visualPath in VisualQueryReader.EnumerateVisualFiles(pagesDir, pageFilter))
         {
             JsonNode? root;
             try
@@ -225,7 +225,7 @@ public sealed class SemanticColorService
             var dataPoints = root["visual"]?["objects"]?["dataPoint"]?.AsArray();
             if (dataPoints == null) continue;
 
-            var measureFields = BuildMeasureFields(ExtractProjections(root));
+            var measureFields = BuildMeasureFields(VisualQueryReader.ExtractProjections(root));
 
             foreach (var dataPoint in dataPoints)
             {
@@ -517,7 +517,7 @@ public sealed class SemanticColorService
     // ------------------------------------------------------------- Fields
 
     private static List<MemberField> BuildMemberFields(
-        List<ProjectionInfo> projections, Dictionary<string, string> columnTypes)
+        List<VisualProjection> projections, Dictionary<string, string> columnTypes)
     {
         var result = new List<MemberField>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -549,7 +549,7 @@ public sealed class SemanticColorService
         return result;
     }
 
-    private static List<MeasureField> BuildMeasureFields(List<ProjectionInfo> projections)
+    private static List<MeasureField> BuildMeasureFields(List<VisualProjection> projections)
     {
         var result = new List<MeasureField>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -585,70 +585,6 @@ public sealed class SemanticColorService
     private static bool ValueEquals(string? raw, string value) =>
         !string.IsNullOrEmpty(raw) &&
         string.Equals(NormalizeLiteralDisplay(raw), value, StringComparison.OrdinalIgnoreCase);
-
-    private static List<ProjectionInfo> ExtractProjections(JsonNode root)
-    {
-        var result = new List<ProjectionInfo>();
-        if (root["visual"]?["query"]?["queryState"] is not JsonObject queryState) return result;
-
-        foreach (var role in queryState)
-        {
-            var projections = role.Value?["projections"]?.AsArray();
-            if (projections == null) continue;
-
-            foreach (var projection in projections)
-            {
-                var field = projection?["field"];
-                if (field == null) continue;
-
-                TryGetFieldIdentity(field, out var entity, out var property);
-
-                result.Add(new ProjectionInfo
-                {
-                    Role = role.Key,
-                    Entity = entity,
-                    Property = property,
-                    QueryRef = projection?["queryRef"]?.ToString(),
-                    NativeQueryRef = projection?["nativeQueryRef"]?.ToString(),
-                    FieldJson = field.ToJsonString(),
-                    IsMeasure = field["Measure"] != null || field["Aggregation"] != null
-                });
-            }
-        }
-
-        return result;
-    }
-
-    private static bool TryGetFieldIdentity(JsonNode? field, out string entity, out string property)
-    {
-        entity = string.Empty;
-        property = string.Empty;
-        if (field == null) return false;
-
-        if (field["Column"] is JsonNode column)
-        {
-            entity = column["Expression"]?["SourceRef"]?["Entity"]?.ToString() ?? string.Empty;
-            property = column["Property"]?.ToString() ?? string.Empty;
-        }
-        else if (field["Measure"] is JsonNode measure)
-        {
-            entity = measure["Expression"]?["SourceRef"]?["Entity"]?.ToString() ?? string.Empty;
-            property = measure["Property"]?.ToString() ?? string.Empty;
-        }
-        else if (field["Aggregation"] is JsonNode aggregation)
-        {
-            var inner = aggregation["Expression"]?["Column"];
-            entity = inner?["Expression"]?["SourceRef"]?["Entity"]?.ToString() ?? string.Empty;
-            property = inner?["Property"]?.ToString() ?? string.Empty;
-        }
-        else if (field["Hierarchy"] is JsonNode hierarchy)
-        {
-            entity = hierarchy["Expression"]?["SourceRef"]?["Entity"]?.ToString() ?? string.Empty;
-            property = hierarchy["Hierarchy"]?.ToString() ?? string.Empty;
-        }
-
-        return property.Length > 0;
-    }
 
     private readonly record struct SelectorLiteral(
         string Value, string Entity, string Property);
@@ -686,7 +622,7 @@ public sealed class SemanticColorService
                 if (!string.IsNullOrEmpty(literal))
                 {
                     var left = comparison["Left"];
-                    TryGetFieldIdentity(left, out var entity, out var property);
+                    VisualQueryReader.TryGetFieldIdentity(left, out var entity, out var property);
 
                     result.Add(new SelectorLiteral(literal, entity, property));
                 }
@@ -849,34 +785,6 @@ public sealed class SemanticColorService
     }
 
     // -------------------------------------------------------------- Files
-
-    private static IEnumerable<string> EnumerateVisualFiles(string pagesDir, IReadOnlySet<string>? pageIds = null)
-    {
-        foreach (var pageDir in Directory.EnumerateDirectories(pagesDir))
-        {
-            if (pageIds != null && !pageIds.Contains(Path.GetFileName(pageDir))) continue;
-
-            var visualsDir = Path.Combine(pageDir, "visuals");
-            if (!Directory.Exists(visualsDir)) continue;
-
-            foreach (var visualDir in Directory.EnumerateDirectories(visualsDir))
-            {
-                var file = Path.Combine(visualDir, "visual.json");
-                if (File.Exists(file)) yield return file;
-            }
-        }
-    }
-
-    private sealed class ProjectionInfo
-    {
-        public string Role { get; init; } = string.Empty;
-        public string Entity { get; init; } = string.Empty;
-        public string Property { get; init; } = string.Empty;
-        public string? QueryRef { get; init; }
-        public string? NativeQueryRef { get; init; }
-        public string? FieldJson { get; init; }
-        public bool IsMeasure { get; init; }
-    }
 
     private sealed class MemberField
     {

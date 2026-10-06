@@ -258,6 +258,103 @@ public class ReportManager
         }
     }
 
+    /// <summary>
+    /// Moves every page in <paramref name="pageIds"/> one position toward the top,
+    /// treating the selection as a single block. Adjacent selected pages shift
+    /// together instead of colliding. Pure in-memory; the caller persists.
+    /// </summary>
+    public void MovePagesUp(IReadOnlyCollection<string> pageIds)
+    {
+        var selected = ResolveSelectedIndices(pageIds);
+        if (selected.Count == 0) return;
+
+        for (int i = 1; i < Pages.Count; i++)
+        {
+            if (selected.Contains(i) && !selected.Contains(i - 1))
+            {
+                (Pages[i - 1], Pages[i]) = (Pages[i], Pages[i - 1]);
+                selected.Remove(i);
+                selected.Add(i - 1);
+            }
+        }
+
+        ReindexPages();
+    }
+
+    /// <summary>
+    /// Moves every page in <paramref name="pageIds"/> one position toward the
+    /// bottom as a single block. Pure in-memory; the caller persists.
+    /// </summary>
+    public void MovePagesDown(IReadOnlyCollection<string> pageIds)
+    {
+        var selected = ResolveSelectedIndices(pageIds);
+        if (selected.Count == 0) return;
+
+        for (int i = Pages.Count - 2; i >= 0; i--)
+        {
+            if (selected.Contains(i) && !selected.Contains(i + 1))
+            {
+                (Pages[i], Pages[i + 1]) = (Pages[i + 1], Pages[i]);
+                selected.Remove(i);
+                selected.Add(i + 1);
+            }
+        }
+
+        ReindexPages();
+    }
+
+    /// <summary>
+    /// Moves every page in <paramref name="pageIds"/> to the top, keeping their
+    /// relative order. Pure in-memory; the caller persists.
+    /// </summary>
+    public void MovePagesToTop(IReadOnlyCollection<string> pageIds)
+    {
+        var selected = ResolveSelectedIndices(pageIds);
+        if (selected.Count == 0) return;
+
+        var reordered = new List<ReportPage>(Pages.Count);
+        for (int i = 0; i < Pages.Count; i++) if (selected.Contains(i)) reordered.Add(Pages[i]);
+        for (int i = 0; i < Pages.Count; i++) if (!selected.Contains(i)) reordered.Add(Pages[i]);
+
+        Pages = reordered;
+        ReindexPages();
+    }
+
+    /// <summary>
+    /// Moves every page in <paramref name="pageIds"/> to the bottom, keeping their
+    /// relative order. Pure in-memory; the caller persists.
+    /// </summary>
+    public void MovePagesToBottom(IReadOnlyCollection<string> pageIds)
+    {
+        var selected = ResolveSelectedIndices(pageIds);
+        if (selected.Count == 0) return;
+
+        var reordered = new List<ReportPage>(Pages.Count);
+        for (int i = 0; i < Pages.Count; i++) if (!selected.Contains(i)) reordered.Add(Pages[i]);
+        for (int i = 0; i < Pages.Count; i++) if (selected.Contains(i)) reordered.Add(Pages[i]);
+
+        Pages = reordered;
+        ReindexPages();
+    }
+
+    /// <summary>
+    /// Indices of the pages named by <paramref name="pageIds"/>, matched
+    /// case-insensitively. Unknown ids are ignored.
+    /// </summary>
+    private HashSet<int> ResolveSelectedIndices(IReadOnlyCollection<string>? pageIds)
+    {
+        var result = new HashSet<int>();
+        if (pageIds == null || pageIds.Count == 0) return result;
+
+        var wanted = new HashSet<string>(pageIds, StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < Pages.Count; i++)
+        {
+            if (wanted.Contains(Pages[i].Id)) result.Add(i);
+        }
+
+        return result;
+    }
+
     public void SortPages(SortMode mode)
     {
         switch (mode)
@@ -589,12 +686,23 @@ public class ReportManager
     /// Replaces the current page definitions with a previously captured snapshot
     /// (a full copy of the pages directory) and reloads the report.
     /// </summary>
+    /// <remarks>
+    /// A snapshot also carries any outside-the-pages files nominated when history was reset —
+    /// report-level filters live in <c>definition/report.json</c> — and those are restored too, so
+    /// an Undo reverts a report-filter repair along with everything else. Snapshots written before
+    /// that layout existed have the pages contents at their root, which is why the pages source is
+    /// probed rather than assumed.
+    /// </remarks>
     public void RestoreFromSnapshot(string snapshotDirectory)
     {
         if (string.IsNullOrEmpty(PagesDirectoryPath) || !Directory.Exists(snapshotDirectory))
         {
             return;
         }
+
+        var pagesSource = Directory.Exists(Path.Combine(snapshotDirectory, ReportEditHistory.PagesFolderName))
+            ? Path.Combine(snapshotDirectory, ReportEditHistory.PagesFolderName)
+            : snapshotDirectory;
 
         if (Directory.Exists(PagesDirectoryPath))
         {
@@ -612,7 +720,15 @@ public class ReportManager
             Directory.CreateDirectory(PagesDirectoryPath);
         }
 
-        CopyDirectory(snapshotDirectory, PagesDirectoryPath);
+        CopyDirectory(pagesSource, PagesDirectoryPath);
+
+        // Extras are stored at their report-relative path, so restoring is a straight overlay.
+        var extras = Path.Combine(snapshotDirectory, ReportEditHistory.ExtrasFolderName);
+        if (Directory.Exists(extras) && !string.IsNullOrEmpty(ReportFolderPath))
+        {
+            CopyDirectory(extras, ReportFolderPath);
+        }
+
         Reload();
     }
 
@@ -663,18 +779,39 @@ public class ReportManager
                 {
                     vItem.VisualType = vis["visualType"]?.GetValue<string>() ?? "visual";
 
-                    // Try to get title or query projection name
-                    if (vis["objects"]?["title"]?["properties"]?["text"]?["expr"]?["Literal"]?["Value"] is JsonValue titleVal)
+                    // Try to get title or query projection name.
+                    //
+                    // Power BI writes objects.title as a single-element ARRAY, but a bare
+                    // object also occurs. Indexing an array with a string key throws, and
+                    // this visual sits in a try/catch that skips it wholesale, so a titled
+                    // visual would silently lose its title instead of showing one.
+                    var titleNode = vis["objects"]?["title"];
+                    string? parsedTitle = null;
+                    if (titleNode is JsonArray titleArray)
                     {
-                        vItem.DisplayTitle = titleVal.GetValue<string>().Trim('\'', '"');
+                        foreach (var entry in titleArray)
+                        {
+                            if (TryReadTitleText(entry, out parsedTitle)) break;
+                        }
                     }
-                    else if (vis["query"]?["queryState"] is JsonObject qs)
+                    else
+                    {
+                        TryReadTitleText(titleNode, out parsedTitle);
+                    }
+
+                    if (!string.IsNullOrEmpty(parsedTitle))
+                    {
+                        vItem.DisplayTitle = parsedTitle;
+                    }
+
+                    if (string.IsNullOrEmpty(vItem.DisplayTitle) &&
+                        vis["query"]?["queryState"] is JsonObject qs)
                     {
                         foreach (var kv in qs)
                         {
                             if (kv.Value?["projections"] is JsonArray projArr && projArr.Count > 0)
                             {
-                                var nativeRef = projArr[0]?["nativeQueryRef"]?.GetValue<string>() 
+                                var nativeRef = projArr[0]?["nativeQueryRef"]?.GetValue<string>()
                                              ?? projArr[0]?["queryRef"]?.GetValue<string>();
                                 if (!string.IsNullOrEmpty(nativeRef))
                                 {
@@ -701,6 +838,35 @@ public class ReportManager
 
         info.Visuals = info.Visuals.OrderBy(v => v.Z).ToList();
         return info;
+    }
+
+    /// <summary>
+    /// Pulls the literal title text out of one <c>objects.title</c> entry. Accepts the array
+    /// shape Power BI writes and the bare-object shape seen in the wild, and reports failure
+    /// rather than throwing so the caller can fall back to a projected field name.
+    /// </summary>
+    private static bool TryReadTitleText(JsonNode? titleNode, out string title)
+    {
+        title = string.Empty;
+        if (titleNode == null) return false;
+
+        try
+        {
+            if (titleNode["properties"]?["text"]?["expr"]?["Literal"]?["Value"] is not JsonValue literal)
+            {
+                return false;
+            }
+
+            var text = literal.GetValue<string>().Trim('\'', '"');
+            if (text.Length == 0) return false;
+
+            title = text;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void ReindexPages()

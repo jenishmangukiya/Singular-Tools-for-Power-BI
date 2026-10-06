@@ -43,25 +43,6 @@
                         Style="{StaticResource RowSubtitleTextStyle}"
                         Text="Open a Power BI project (.pbip) to manage its roles."
                         TextWrapping="Wrap" />
-                    <Grid
-                        x:Name="PowerBiWarning"
-                        ColumnSpacing="{StaticResource SpaceXS}"
-                        Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <FontIcon
-                            VerticalAlignment="Top"
-                            FontSize="12"
-                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                            Glyph="&#xE7BA;" />
-                        <TextBlock
-                            Grid.Column="1"
-                            Style="{StaticResource MutedCaptionTextStyle}"
-                            Text="OLS is written to the model's role files on disk. If Power BI Desktop is open, the external change is applied for you after each apply."
-                            TextWrapping="Wrap" />
-                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>
@@ -112,7 +93,7 @@
             <TextBox
                 x:Name="SearchBox"
                 Grid.Column="3"
-                Width="180"
+                Width="260"
                 PlaceholderText="Search tables and columns"
                 TextChanged="SearchBox_TextChanged"
                 ToolTipService.ToolTip="Filter the object list" />

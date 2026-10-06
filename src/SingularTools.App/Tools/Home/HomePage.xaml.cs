@@ -21,6 +21,8 @@ public sealed partial class HomePage : Page, IToolPage
     {
         InitializeComponent();
         _ = BrandAssets.ApplyAsync(HomeLogo);
+        _ = BrandAssets.ApplySvgAsync(PowerBiLogo, "power-bi.svg");
+        _ = BrandAssets.ApplySvgAsync(FabricLogo, "fabric.svg");
         Loaded += HomePage_Loaded;
         Unloaded += HomePage_Unloaded;
     }

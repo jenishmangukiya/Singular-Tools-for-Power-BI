@@ -113,6 +113,37 @@
                     </DropDownButton.Flyout>
                 </DropDownButton>
 
+                <DropDownButton
+                    x:Name="MoveButton"
+                    Height="32"
+                    Padding="10,0"
+                    AutomationProperties.Name="Move selected pages"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    IsEnabled="False"
+                    ToolTipService.ToolTip="Move the selected page(s)">
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                        <FontIcon FontSize="14" Glyph="&#xE7C2;" />
+                        <TextBlock x:Name="MoveButtonText" Text="Move" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Click="MoveSelectedUp_Click" Text="Move up">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74A;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Click="MoveSelectedDown_Click" Text="Move down">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74B;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Click="MoveSelectedToTop_Click" Text="Move to top">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Click="MoveSelectedToBottom_Click" Text="Move to bottom">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE896;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+
                 <ToggleButton
                     x:Name="GoToPageBtn"
                     Height="32"
@@ -132,6 +163,7 @@
                     Padding="10,0"
                     Click="Reload_Click"
                     CornerRadius="{StaticResource RadiusMedium}"
+                    Style="{StaticResource ReloadButtonStyle}"
                     ToolTipService.ToolTip="Re-read the report pages from disk">
                     <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
                         <FontIcon FontSize="14" Glyph="&#xE72C;" />
@@ -173,7 +205,10 @@
                                 FontSize="12"
                                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                 Glyph="&#xE76F;" />
-                            <TextBlock Style="{StaticResource MutedCaptionTextStyle}" Text="Drag rows to reorder" />
+                            <TextBlock
+                                x:Name="ListHintText"
+                                Style="{StaticResource MutedCaptionTextStyle}"
+                                Text="Drag rows to reorder · Ctrl/Shift-click to select multiple" />
                         </StackPanel>
                     </Grid>
 
@@ -184,10 +219,11 @@
                         AllowDrop="True"
                         CanDragItems="True"
                         CanReorderItems="True"
+                        DragItemsStarting="PagesListView_DragItemsStarting"
                         DragItemsCompleted="PagesListView_DragItemsCompleted"
                         KeyDown="PagesListView_KeyDown"
                         SelectionChanged="PagesListView_SelectionChanged"
-                        SelectionMode="Single"
+                        SelectionMode="Extended"
                         ContextRequested="PagesListView_ContextRequested">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
@@ -206,7 +242,8 @@
                                 ColumnSpacing="{StaticResource SpaceM}"
                                 CornerRadius="{StaticResource RadiusMedium}"
                                 PointerEntered="Row_PointerEntered"
-                                PointerExited="Row_PointerExited">
+                                PointerExited="Row_PointerExited"
+                                PointerPressed="Row_PointerPressed">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="18" />
                                     <ColumnDefinition Width="Auto" />

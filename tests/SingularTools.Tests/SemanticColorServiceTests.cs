@@ -11,364 +11,347 @@ namespace SingularTools.Tests;
 
 public class SemanticColorServiceTests
 {
-    private const string ColoredPage = "03d23146c353b39f1666";
-    private const string SecondPage = "6ce61a33dfeca0131c91";
-    private const string BarVisual = "e22efc042b68c0b157de";
-    private const string TableVisual = "9ab413562c85b9b59dcb";
+    // ------------------------------------------------------------- Fixtures
 
-    private string GetDemoReportPath()
+    /// <summary>
+    /// A bar chart shaped like Power BI's own: a string category, a numeric
+    /// series and a count measure. The numeric suffix and "type compatible only"
+    /// behaviour both depend on the semantic model declaring Year as int64.
+    /// </summary>
+    private static TestProjection[] FinancialsProjections() => new TestProjection[]
     {
-        var candidates = new[]
+        new TestProjection("Category", "financials", "Product"),
+        new TestProjection("Series", "financials", "Year"),
+        new TestProjection("Y", "financials", "Date")
         {
-            string.Empty,
-            Path.Combine("Assets", "Test_PBI_Report")
-        };
-
-        var current = Directory.GetCurrentDirectory();
-        while (current != null)
-        {
-            foreach (var relative in candidates)
-            {
-                var root = Path.Combine(current, relative);
-                if (File.Exists(Path.Combine(root, "Demo PBI Report.pbip")))
-                {
-                    return Path.Combine(root, "Demo PBI Report.Report");
-                }
-            }
-
-            current = Directory.GetParent(current)?.FullName;
+            AggregateFunction = 5,
+            QueryRef = "CountNonNull(financials.Date)",
+            NativeQueryRef = "Count of Date"
         }
+    };
 
-        throw new DirectoryNotFoundException("Could not locate Demo PBI Report.pbip");
-    }
+    private static TestSemanticModel FinancialsModel() => new TestSemanticModel()
+        .WithStringColumn("financials", "Product")
+        .WithIntColumn("financials", "Year");
 
-    private static string VisualPath(string reportRoot, string visual)
-        => VisualPath(reportRoot, ColoredPage, visual);
+    /// <summary>
+    /// Two pages carrying the same chart shape (so page-scoped rules can be
+    /// compared against each other) plus a table visual that must be skipped.
+    /// </summary>
+    private static TestReport BarChartReport() => TestReports.Create(
+        new[]
+        {
+            new TestPage(
+                "Overview",
+                new TestVisual("barChart", FinancialsProjections()),
+                new TestVisual("tableEx", FinancialsProjections())),
+            new TestPage(
+                "Detail",
+                new TestVisual("barChart", FinancialsProjections()))
+        },
+        FinancialsModel());
 
-    private static string VisualPath(string reportRoot, string page, string visual)
-        => Path.Combine(reportRoot, "definition", "pages", page, "visuals", visual, "visual.json");
+    /// <summary>
+    /// The demo report used to ship with these selectors already in place; they
+    /// are injected here instead so the counts below do not depend on whatever
+    /// Power BI last saved into the checked-in fixture.
+    /// </summary>
+    private static void InjectVeloSelector(string visualPath) =>
+        InjectMemberSelector(visualPath, "financials", "Product", "'Velo'", "#010203");
+
+    // ------------------------------------------------------------- Discovery
 
     [Fact]
     public void ApplyRules_RecolorsExistingValues_AndIsIdempotent()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorRecolor_");
+        using var report = BarChartReport();
+        var charts = TestReports.Visuals(report.ReportPath, "barChart");
+        Assert.NotEmpty(charts);
 
-        try
+        foreach (var chart in charts)
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
-            var rules = new List<SemanticColorRule> { new() { Value = "Velo", Hex = "#00AA00" } };
-
-            var result = service.ApplyRules(manager, rules);
-
-            Assert.True(result.SelectorsChanged >= 7, $"expected the existing Velo selectors to recolor, got {result.SelectorsChanged}");
-            Assert.True(result.FilesWritten >= 7, $"expected most visuals to change, got {result.FilesWritten}");
-
-            var barPath = VisualPath(tempDir, BarVisual);
-            Assert.Contains("#00AA00", File.ReadAllText(barPath));
-            Assert.Contains("#00AA00", BarChartFillFor(barPath, "Product", "'Velo'"));
-
-            var second = service.ApplyRules(manager, rules);
-            Assert.Equal(0, second.FilesWritten);
-            Assert.Equal(0, second.SelectorsChanged);
-            Assert.Equal(0, second.SelectorsCreated);
+            InjectVeloSelector(chart.VisualJsonPath);
         }
-        finally
+
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+        var rules = new List<SemanticColorRule> { new() { Value = "Velo", Hex = "#00AA00" } };
+
+        var result = service.ApplyRules(manager, rules);
+
+        // Every injected selector is recoloured, and nothing new is created.
+        Assert.Equal(charts.Count, result.SelectorsChanged);
+        Assert.Equal(charts.Count, result.FilesWritten);
+        Assert.Equal(0, result.SelectorsCreated);
+
+        foreach (var chart in charts)
         {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            Assert.Contains("#00AA00", File.ReadAllText(chart.VisualJsonPath));
+            Assert.Contains("#00AA00", BarChartFillFor(chart.VisualJsonPath, "Product", "'Velo'"));
         }
+
+        var second = service.ApplyRules(manager, rules);
+        Assert.Equal(0, second.FilesWritten);
+        Assert.Equal(0, second.SelectorsChanged);
+        Assert.Equal(0, second.SelectorsCreated);
     }
 
     [Fact]
     public void ApplyRules_MatchesValuesCaseInsensitively()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorCase_");
+        using var report = BarChartReport();
+        var chart = TestReports.Visual(report.ReportPath, "barChart");
+        InjectVeloSelector(chart.VisualJsonPath);
 
-        try
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        var result = service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
+            new() { Value = "velo", Hex = "#ABCDEF" }
+        });
 
-            var result = service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "velo", Hex = "#ABCDEF" }
-            });
-
-            Assert.True(result.SelectorsChanged >= 7);
-            Assert.Contains("#ABCDEF", File.ReadAllText(VisualPath(tempDir, BarVisual)));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        Assert.Equal(1, result.SelectorsChanged);
+        Assert.Contains("#ABCDEF", File.ReadAllText(chart.VisualJsonPath));
     }
 
     [Fact]
     public void ApplyRules_CreatesSelectorOnTypeCompatibleFieldsOnly()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorCreate_");
+        using var report = BarChartReport();
+        var chart = TestReports.Visual(report.ReportPath, "barChart");
 
-        try
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        var rule = new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
+            new() { Value = "Channel Partner", Hex = "#123456" }
+        };
 
-            var result = service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "Channel Partner", Hex = "#123456" }
-            });
+        var result = service.ApplyRules(manager, rule);
 
-            Assert.True(result.SelectorsCreated >= 1);
-            Assert.True(result.FilesWritten >= 1);
+        Assert.True(result.SelectorsCreated >= 1);
+        Assert.True(result.FilesWritten >= 1);
 
-            var barPath = VisualPath(tempDir, BarVisual);
-            var dataPoints = ReadDataPoints(barPath);
+        var dataPoints = ReadDataPoints(chart.VisualJsonPath);
 
-            // Created on the string Category field (Product)...
-            Assert.NotNull(FindMemberSelector(dataPoints, "Product", "'Channel Partner'"));
+        // Created on the string Category field (Product)...
+        Assert.NotNull(FindMemberSelector(dataPoints, "Product", "'Channel Partner'"));
 
-            // ...but never bound to the numeric Year field.
-            Assert.Null(FindMemberSelector(dataPoints, "Year", "'Channel Partner'"));
+        // ...but never bound to the numeric Year field.
+        Assert.Null(FindMemberSelector(dataPoints, "Year", "'Channel Partner'"));
 
-            var second = service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "Channel Partner", Hex = "#123456" }
-            });
-            Assert.Equal(0, second.FilesWritten);
-            Assert.Equal(0, second.SelectorsCreated);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        var second = service.ApplyRules(manager, rule);
+        Assert.Equal(0, second.FilesWritten);
+        Assert.Equal(0, second.SelectorsCreated);
     }
 
     [Fact]
     public void ApplyRules_NumericValue_UsesNumericSuffix()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorNumeric_");
+        using var report = BarChartReport();
+        var chart = TestReports.Visual(report.ReportPath, "barChart");
 
-        try
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        var result = service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
+            new() { Value = "2015", Hex = "#654321" }
+        });
 
-            var result = service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "2015", Hex = "#654321" }
-            });
+        Assert.True(result.SelectorsCreated >= 1);
 
-            Assert.True(result.SelectorsCreated >= 1);
-
-            var dataPoints = ReadDataPoints(VisualPath(tempDir, BarVisual));
-            var numeric = FindMemberSelector(dataPoints, "Year", "2015L");
-            Assert.NotNull(numeric);
-            Assert.Contains("#654321", numeric!.ToJsonString());
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        var dataPoints = ReadDataPoints(chart.VisualJsonPath);
+        var numeric = FindMemberSelector(dataPoints, "Year", "2015L");
+        Assert.NotNull(numeric);
+        Assert.Contains("#654321", numeric!.ToJsonString());
     }
 
     [Fact]
     public void ApplyRules_MatchesSeriesName_WithMetadataSelector()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorSeries_");
+        using var report = BarChartReport();
+        var chart = TestReports.Visual(report.ReportPath, "barChart");
 
-        try
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        var result = service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
+            new() { Value = "Count of Date", Hex = "#0F0F0F" }
+        });
 
-            var result = service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "Count of Date", Hex = "#0F0F0F" }
-            });
+        Assert.True(result.SelectorsCreated >= 1);
 
-            Assert.True(result.SelectorsCreated >= 1);
-
-            var dataPoints = ReadDataPoints(VisualPath(tempDir, BarVisual));
-            Assert.NotNull(FindMetadataSelector(dataPoints, "CountNonNull(financials.Date)"));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        var dataPoints = ReadDataPoints(chart.VisualJsonPath);
+        Assert.NotNull(FindMetadataSelector(dataPoints, "CountNonNull(financials.Date)"));
     }
 
     [Fact]
     public void ApplyRules_IgnoresTableVisuals()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorTable_");
+        // One report carrying both a table and a chart, so "the table is skipped" and "the
+        // rule was live" can be asserted against the same run.
+        using var report = BarChartReport();
 
-        try
+        var table = TestReports.Visual(report.ReportPath, "tableEx");
+        var chart = TestReports.Visual(report.ReportPath, "barChart");
+
+        InjectVeloSelector(table.VisualJsonPath);
+
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        var before = File.ReadAllText(table.VisualJsonPath);
+        var chartBefore = File.ReadAllText(chart.VisualJsonPath);
+        service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var tablePath = VisualPath(tempDir, TableVisual);
-            InjectMemberSelector(tablePath, "financials", "Product", "'Velo'", "#010203");
+            new() { Value = "Velo", Hex = "#00AA00" }
+        });
 
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
+        // A table has no legend, series or slice to colour, so it is left byte-for-byte alone.
+        Assert.Equal(before, File.ReadAllText(table.VisualJsonPath));
 
-            var before = File.ReadAllText(tablePath);
-            service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "Velo", Hex = "#00AA00" }
-            });
-
-            Assert.Equal(before, File.ReadAllText(tablePath));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        // The rule was live: a chart in the same report was still coloured.
+        Assert.NotEqual(chartBefore, File.ReadAllText(chart.VisualJsonPath));
+        Assert.Contains("#00AA00", BarChartFillFor(chart.VisualJsonPath, "Product", "'Velo'"));
     }
 
     [Fact]
     public void GetAppliedColor_ReflectsReportState()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorRead_");
+        using var report = BarChartReport();
 
-        try
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        Assert.Null(service.GetAppliedColor(manager, new SemanticColorRule { Value = "DefinitelyNotPresent" }));
+
+        service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
+            new() { Value = "Velo", Hex = "#00AA00" }
+        });
 
-            Assert.Null(service.GetAppliedColor(manager, new SemanticColorRule { Value = "DefinitelyNotPresent" }));
-
-            service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new() { Value = "Velo", Hex = "#00AA00" }
-            });
-
-            Assert.Equal("#00AA00", service.GetAppliedColor(manager, new SemanticColorRule { Value = "Velo" }));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        Assert.Equal("#00AA00", service.GetAppliedColor(manager, new SemanticColorRule { Value = "Velo" }));
     }
 
     [Fact]
     public void ApplyRules_PageScoped_OnlyTouchesSelectedPages()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorPageScope_");
+        using var report = BarChartReport();
+        var scopedPageId = report.PageIdFor("Overview");
+        var otherPageId = report.PageIdFor("Detail");
 
-        try
+        var selectedBar = TestReports.Visual(report.ReportPath, "barChart", scopedPageId);
+        var otherBar = TestReports.Visual(report.ReportPath, "barChart", otherPageId);
+        InjectVeloSelector(selectedBar.VisualJsonPath);
+        InjectVeloSelector(otherBar.VisualJsonPath);
+
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        var otherBefore = File.ReadAllText(otherBar.VisualJsonPath);
+
+        var result = service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
-
-            var selectedBar = VisualPath(tempDir, ColoredPage, BarVisual);
-            var otherBar = VisualPath(tempDir, SecondPage, BarVisual);
-            var otherBefore = File.ReadAllText(otherBar);
-
-            var result = service.ApplyRules(manager, new List<SemanticColorRule>
+            new()
             {
-                new()
-                {
-                    Value = "Velo",
-                    Hex = "#00AA00",
-                    Scope = SemanticColorScope.Pages,
-                    PageIds = new List<string> { ColoredPage }
-                }
-            });
+                Value = "Velo",
+                Hex = "#00AA00",
+                Scope = SemanticColorScope.Pages,
+                PageIds = new List<string> { scopedPageId }
+            }
+        });
 
-            Assert.True(result.SelectorsChanged >= 7);
-            Assert.Contains("#00AA00", File.ReadAllText(selectedBar));
-            Assert.Equal(otherBefore, File.ReadAllText(otherBar));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        // Only the scoped page's chart is rewritten.
+        Assert.Equal(1, result.SelectorsChanged);
+        Assert.Equal(1, result.FilesWritten);
+        Assert.Contains("#00AA00", File.ReadAllText(selectedBar.VisualJsonPath));
+        Assert.Equal(otherBefore, File.ReadAllText(otherBar.VisualJsonPath));
     }
 
     [Fact]
     public void ApplyRules_PageLevelOverridesReportLevel()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorPrecedence_");
+        using var report = BarChartReport();
+        var scopedPageId = report.PageIdFor("Overview");
+        var otherPageId = report.PageIdFor("Detail");
 
-        try
+        var scopedBar = TestReports.Visual(report.ReportPath, "barChart", scopedPageId);
+        var otherBar = TestReports.Visual(report.ReportPath, "barChart", otherPageId);
+        InjectVeloSelector(scopedBar.VisualJsonPath);
+        InjectVeloSelector(otherBar.VisualJsonPath);
+
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
-
-            service.ApplyRules(manager, new List<SemanticColorRule>
+            new() { Value = "Velo", Hex = "#111111", Scope = SemanticColorScope.Report },
+            new()
             {
-                new() { Value = "Velo", Hex = "#111111", Scope = SemanticColorScope.Report },
-                new()
-                {
-                    Value = "Velo",
-                    Hex = "#222222",
-                    Scope = SemanticColorScope.Pages,
-                    PageIds = new List<string> { ColoredPage }
-                }
-            });
+                Value = "Velo",
+                Hex = "#222222",
+                Scope = SemanticColorScope.Pages,
+                PageIds = new List<string> { scopedPageId }
+            }
+        });
 
-            // Page rule wins on its page...
-            Assert.Equal("'#222222'", BarChartFillFor(VisualPath(tempDir, ColoredPage, BarVisual), "Product", "'Velo'"));
-            // ...and the report rule still applies everywhere else.
-            Assert.Equal("'#111111'", BarChartFillFor(VisualPath(tempDir, SecondPage, BarVisual), "Product", "'Velo'"));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+        // Page rule wins on its page...
+        Assert.Equal("'#222222'", BarChartFillFor(scopedBar.VisualJsonPath, "Product", "'Velo'"));
+        // ...and the report rule still applies everywhere else.
+        Assert.Equal("'#111111'", BarChartFillFor(otherBar.VisualJsonPath, "Product", "'Velo'"));
     }
 
     [Fact]
     public void GetAppliedColor_RespectsPageScope()
     {
-        var tempDir = CopyDemoToTemp(GetDemoReportPath(), "PBIR_SemColorReadScope_");
+        using var report = BarChartReport();
+        var scopedPageId = report.PageIdFor("Overview");
+        var otherPageId = report.PageIdFor("Detail");
 
-        try
+        var manager = new ReportManager();
+        manager.LoadReport(report.ReportPath);
+        var service = new SemanticColorService();
+
+        service.ApplyRules(manager, new List<SemanticColorRule>
         {
-            var manager = new ReportManager();
-            manager.LoadReport(tempDir);
-            var service = new SemanticColorService();
-
-            service.ApplyRules(manager, new List<SemanticColorRule>
-            {
-                new()
-                {
-                    Value = "Velo",
-                    Hex = "#00AA00",
-                    Scope = SemanticColorScope.Pages,
-                    PageIds = new List<string> { ColoredPage }
-                }
-            });
-
-            var scoped = new SemanticColorRule
+            new()
             {
                 Value = "Velo",
+                Hex = "#00AA00",
                 Scope = SemanticColorScope.Pages,
-                PageIds = new List<string> { ColoredPage }
-            };
-            var otherPage = new SemanticColorRule
-            {
-                Value = "Velo",
-                Scope = SemanticColorScope.Pages,
-                PageIds = new List<string> { SecondPage }
-            };
+                PageIds = new List<string> { scopedPageId }
+            }
+        });
 
-            Assert.Equal("#00AA00", service.GetAppliedColor(manager, scoped));
-            Assert.False(string.Equals(
-                service.GetAppliedColor(manager, otherPage), "#00AA00", StringComparison.OrdinalIgnoreCase));
-        }
-        finally
+        var scoped = new SemanticColorRule
         {
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-        }
+            Value = "Velo",
+            Scope = SemanticColorScope.Pages,
+            PageIds = new List<string> { scopedPageId }
+        };
+        var otherPage = new SemanticColorRule
+        {
+            Value = "Velo",
+            Scope = SemanticColorScope.Pages,
+            PageIds = new List<string> { otherPageId }
+        };
+
+        Assert.Equal("#00AA00", service.GetAppliedColor(manager, scoped));
+        Assert.False(string.Equals(
+            service.GetAppliedColor(manager, otherPage), "#00AA00", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -514,39 +497,5 @@ public class SemanticColorServiceTests
             },
             ["selector"] = selector
         };
-    }
-
-    private static string CopyDemoToTemp(string reportPath, string prefix)
-    {
-        var projectRoot = Directory.GetParent(reportPath)!.FullName;
-        var reportName = Path.GetFileName(reportPath);
-        var tempRoot = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
-
-        CopyDirectory(reportPath, Path.Combine(tempRoot, reportName));
-
-        // The service reads column types from the sibling semantic model, so copy it too.
-        if (reportName.EndsWith(".Report", StringComparison.OrdinalIgnoreCase))
-        {
-            var modelName = reportName.Substring(0, reportName.Length - ".Report".Length) + ".SemanticModel";
-            var modelSource = Path.Combine(projectRoot, modelName);
-            if (Directory.Exists(modelSource))
-            {
-                CopyDirectory(modelSource, Path.Combine(tempRoot, modelName));
-            }
-        }
-
-        return Path.Combine(tempRoot, reportName);
-    }
-
-    private static void CopyDirectory(string sourceDir, string destinationDir)
-    {
-        Directory.CreateDirectory(destinationDir);
-        foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(sourceDir, file);
-            var dest = Path.Combine(destinationDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            File.Copy(file, dest, true);
-        }
     }
 }

@@ -445,7 +445,6 @@ public sealed partial class ObjectSecurityPage : Page, IToolPage
             ModelHintText.Text = string.IsNullOrEmpty(_projectRoot)
                 ? "Open a Power BI project (.pbip) to manage its roles."
                 : $"No .SemanticModel folder next to {_projectRoot}.";
-            PowerBiWarning.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -453,7 +452,6 @@ public sealed partial class ObjectSecurityPage : Page, IToolPage
         ModelHintText.Text = _model.HasTmdlDefinition
             ? $"{_model.Roles.Count} role(s) \u00B7 {_model.Tables.Count} tables \u00B7 {_model.FolderPath}"
             : _model.FolderPath;
-        PowerBiWarning.Visibility = _model.HasTmdlDefinition ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)

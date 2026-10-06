@@ -9,17 +9,13 @@ model Model
 
 annotation __PBI_TimeIntelligenceEnabled = 1
 
-annotation PBI_QueryOrder = ["financials"]
+annotation PBI_QueryOrder = ["RAW_DATA"]
 
 annotation PBI_ProTooling = ["DevMode","TMDLView_Desktop"]
 
-ref table financials
-ref table DateTableTemplate_aecf1a85-62fa-494b-a49e-4b3eefa351f0
-ref table LocalDateTable_22bc4709-7451-4c9d-aa8f-9e01ef89fc91
+ref table RAW_DATA
 
-ref role R1
-ref role ols-R2
-ref role Untitled
+ref role OLS1
 
 ref cultureInfo en-US
 

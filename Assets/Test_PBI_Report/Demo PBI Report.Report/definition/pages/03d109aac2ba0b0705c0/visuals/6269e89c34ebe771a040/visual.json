@@ -1,0 +1,56 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.13.0/schema.json",
+  "name": "6269e89c34ebe771a040",
+  "position": {
+    "x": 0,
+    "y": 0,
+    "z": 0,
+    "height": 525.3694581280788,
+    "width": 1920.591133004926
+  },
+  "visual": {
+    "visualType": "map",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "RAW_DATA"
+                    }
+                  },
+                  "Property": "address"
+                }
+              },
+              "queryRef": "RAW_DATA.address",
+              "nativeQueryRef": "address",
+              "active": true
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "9eaaeb71c69f92c7f7f2",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "RAW_DATA"
+              }
+            },
+            "Property": "address"
+          }
+        },
+        "type": "Categorical"
+      }
+    ]
+  }
+}

@@ -1,0 +1,94 @@
+table RAW_DATA
+	lineageTag: 49999108-7b49-44e1-8a8a-d040ec13b596
+
+	column address
+		dataType: string
+		lineageTag: 0bf1fa88-e635-4d51-b5bd-7824cb50a350
+		summarizeBy: none
+		sourceColumn: address
+
+		annotation SummarizationSetBy = Automatic
+
+	column list
+		dataType: string
+		lineageTag: 345f76eb-0e95-4df6-91ee-3ee460e8567a
+		summarizeBy: none
+		sourceColumn: list
+
+		annotation SummarizationSetBy = Automatic
+
+	column country
+		dataType: string
+		lineageTag: ee2962d2-1021-41ec-981e-1f1e26590f6a
+		summarizeBy: none
+		sourceColumn: country
+
+		annotation SummarizationSetBy = Automatic
+
+	column region
+		dataType: string
+		lineageTag: e0ef33b9-8b6c-4400-9b03-f18e810bf053
+		summarizeBy: none
+		sourceColumn: region
+
+		annotation SummarizationSetBy = Automatic
+
+	column postalZip
+		dataType: string
+		lineageTag: 6f79aced-c50d-41a5-bb28-c482d080bda3
+		summarizeBy: none
+		sourceColumn: postalZip
+
+		annotation SummarizationSetBy = Automatic
+
+	column currency
+		dataType: string
+		lineageTag: bcce791e-ddd2-4f43-8a84-90a3f84b3135
+		summarizeBy: none
+		sourceColumn: currency
+
+		annotation SummarizationSetBy = Automatic
+
+	column phone
+		dataType: string
+		lineageTag: 39a820c7-70bc-4bb8-95ec-9ea52bb909b0
+		summarizeBy: none
+		sourceColumn: phone
+
+		annotation SummarizationSetBy = Automatic
+
+	column name_Num
+		dataType: string
+		lineageTag: 15da43e6-5196-4c67-a65a-39ed153bf8f8
+		summarizeBy: none
+		sourceColumn: name_Num
+
+		annotation SummarizationSetBy = Automatic
+
+	column name
+		dataType: string
+		lineageTag: ca82b115-f6b5-40bd-8ca4-5f91e1c2297d
+		summarizeBy: none
+		sourceColumn: name
+
+		annotation SummarizationSetBy = Automatic
+
+	column email
+		dataType: string
+		lineageTag: a0b3fd8f-5e03-46a1-8d04-58fd1efdc0ed
+		summarizeBy: none
+		sourceColumn: email
+
+		annotation SummarizationSetBy = Automatic
+
+	partition RAW_DATA = m
+		mode: import
+		source =
+				let
+				  Source = Csv.Document(File.Contents("E:\Test_Projects\Singular Tools for Power BI\Assets\Test_PBI_Report\RAW_DATA.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.None]),
+				  #"Promoted headers" = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+				in
+				  #"Promoted headers"
+
+	annotation PBI_ResultType = Table
+

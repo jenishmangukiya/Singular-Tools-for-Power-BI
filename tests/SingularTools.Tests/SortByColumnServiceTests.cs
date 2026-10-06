@@ -40,27 +40,6 @@ public sealed class SortByColumnServiceTests : IDisposable
         return modelFolder;
     }
 
-    private static string GetDemoReportPath()
-    {
-        var candidates = new[] { string.Empty, Path.Combine("Assets", "Test_PBI_Report") };
-        var current = Directory.GetCurrentDirectory();
-        while (current != null)
-        {
-            foreach (var relative in candidates)
-            {
-                var root = Path.Combine(current, relative);
-                if (File.Exists(Path.Combine(root, "Demo PBI Report.pbip")))
-                {
-                    return Path.Combine(root, "Demo PBI Report.Report");
-                }
-            }
-
-            current = Directory.GetParent(current)?.FullName;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate Demo PBI Report.pbip");
-    }
-
     /// <summary>A table whose two order columns are still plain strings and unsorted.</summary>
     private static string UnsortedTable => Tmdl(
         "table financials",
@@ -120,26 +99,61 @@ public sealed class SortByColumnServiceTests : IDisposable
 
     // --------------------------------------------------------------- Discovery
 
-    [Fact]
-    public void DiscoverModelFolder_FindsSiblingOfReport()
+    /// <summary>
+    /// Creates a throwaway project with a .pbip, its .Report and a sibling .SemanticModel,
+    /// and returns the .Report path. DiscoverModelFolder should resolve the sibling from any
+    /// of the three shapes.
+    /// </summary>
+    private string CreateSiblingProject()
     {
-        var folder = SortByColumnService.DiscoverModelFolder(GetDemoReportPath());
+        var root = Path.Combine(Path.GetTempPath(), "singular-discovery-" + Guid.NewGuid().ToString("N"));
+        var reportFolder = Path.Combine(root, "Sample.Report");
+        Directory.CreateDirectory(Path.Combine(reportFolder, "definition", "pages"));
+        File.WriteAllText(Path.Combine(reportFolder, "definition", "pages", "pages.json"), "{}");
+        File.WriteAllText(Path.Combine(root, "Sample.pbip"), "{}");
 
-        Assert.NotNull(folder);
-        Assert.EndsWith("Demo PBI Report.SemanticModel", folder);
-        Assert.True(Directory.Exists(Path.Combine(folder!, "definition", "tables")));
+        var tablesDir = Path.Combine(root, "Sample.SemanticModel", "definition", "tables");
+        Directory.CreateDirectory(tablesDir);
+        File.WriteAllText(Path.Combine(tablesDir, "t.tmdl"), Tmdl(
+            "table t",
+            "",
+            "\tcolumn Name",
+            "\t\tdataType: string"));
+
+        _tempRoots.Add(root);
+        return reportFolder;
     }
 
     [Fact]
-    public void LoadModel_ReadsDemoTablesAndColumns()
+    public void DiscoverModelFolder_FindsSiblingOfReport()
     {
-        var folder = SortByColumnService.DiscoverModelFolder(GetDemoReportPath())!;
-        var model = SortByColumnService.LoadModel(folder);
+        var reportFolder = CreateSiblingProject();
+
+        var folder = SortByColumnService.DiscoverModelFolder(reportFolder);
+
+        Assert.NotNull(folder);
+        Assert.EndsWith("Sample.SemanticModel", folder);
+        Assert.True(Directory.Exists(Path.Combine(folder!, "definition", "tables")));
+
+        // The project root and the model folder itself resolve to the same model.
+        Assert.Equal(folder, SortByColumnService.DiscoverModelFolder(Path.GetDirectoryName(reportFolder)));
+        Assert.Equal(folder, SortByColumnService.DiscoverModelFolder(folder));
+    }
+
+    [Fact]
+    public void LoadModel_ReadsTablesAndColumns()
+    {
+        var model = SortByColumnService.LoadModel(CreateModel(("financials.tmdl", Tmdl(
+            "table financials",
+            "",
+            "\tcolumn 'Discount Band'",
+            "\t\tdataType: string",
+            "",
+            "\tcolumn 'Discount Band_ord'",
+            "\t\tdataType: int64"))));
 
         Assert.True(model.HasTmdlDefinition);
 
-        // Structural only: the demo model is edited in place by its author, so its
-        // sort-by/type state is not asserted here (that is covered synthetically).
         var financials = model.Tables.Single(t => t.Name == "financials");
         Assert.Contains(financials.Columns, c => c.Name == "Discount Band");
         Assert.Contains(financials.Columns, c => c.Name == "Discount Band_ord");
@@ -149,9 +163,17 @@ public sealed class SortByColumnServiceTests : IDisposable
     // ---------------------------------------------------------------- Planning
 
     [Fact]
-    public void BuildPlan_OnDemoReport_PairsDiscountBand()
+    public void BuildPlan_PairsAnOrderColumnWithItsBase()
     {
-        var model = SortByColumnService.LoadModel(SortByColumnService.DiscoverModelFolder(GetDemoReportPath())!);
+        var model = SortByColumnService.LoadModel(CreateModel(("financials.tmdl", Tmdl(
+            "table financials",
+            "",
+            "\tcolumn 'Discount Band'",
+            "\t\tdataType: string",
+            "",
+            "\tcolumn 'Discount Band_ord'",
+            "\t\tdataType: int64"))));
+
         var plan = SortByColumnService.BuildPlan(model, "_ord");
 
         var pair = Assert.Single(plan.Pairs, p => p.BaseColumn == "Discount Band");

@@ -44,4 +44,37 @@ internal static class BrandAssets
             target.Visibility = Visibility.Collapsed;
         }
     }
+
+    /// <summary>
+    /// Loads an SVG brand asset (Power BI, Fabric) from the executable's Assets
+    /// folder via <see cref="SvgImageSource"/>, using a file stream for the same
+    /// unpackaged-app reason as <see cref="ApplyAsync"/>.
+    /// </summary>
+    public static async Task ApplySvgAsync(Image target, string fileName)
+    {
+        if (target == null) return;
+
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", fileName);
+            if (!File.Exists(path))
+            {
+                target.Visibility = Visibility.Collapsed;
+                App.Log($"Brand asset missing: {path}");
+                return;
+            }
+
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+            using var stream = await file.OpenReadAsync();
+
+            var svg = new SvgImageSource();
+            await svg.SetSourceAsync(stream);
+            target.Source = svg;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Brand SVG load failed ({fileName}): {ex}");
+            target.Visibility = Visibility.Collapsed;
+        }
+    }
 }

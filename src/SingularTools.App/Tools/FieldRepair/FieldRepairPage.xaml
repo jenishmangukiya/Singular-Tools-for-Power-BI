@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="SingularTools_App.Tools.FieldRepair.FieldRepairPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:SingularTools_App.Tools.FieldRepair"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="Transparent" Padding="{StaticResource ToolPagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Row 0 · Toolbar  -->
+        <Grid Margin="2,0,2,10" ColumnSpacing="{StaticResource SpaceM}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="ScanButton"
+                Click="ScanButton_Click"
+                Style="{StaticResource ToolbarButtonStyle}"
+                ToolTipService.ToolTip="Re-check every visual and filter against the semantic model">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                    <FontIcon FontSize="14" Glyph="&#xE721;" />
+                    <TextBlock Text="Scan" />
+                </StackPanel>
+            </Button>
+
+            <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                <TextBlock
+                    x:Name="ScanSummaryText"
+                    Style="{StaticResource RowTitleTextStyle}"
+                    Text="Scan to find visuals and filters referencing fields the model no longer has."
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    x:Name="LastScanText"
+                    Style="{StaticResource RowSubtitleTextStyle}"
+                    Text=""
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <!--  Undo/redo the repairs themselves; they ride the shared report history.  -->
+            <StackPanel
+                Grid.Column="2"
+                Orientation="Horizontal"
+                Spacing="{StaticResource SpaceS}">
+                <Button
+                    x:Name="UndoButton"
+                    AutomationProperties.Name="Undo"
+                    Click="Undo_Click"
+                    IsEnabled="False"
+                    Style="{StaticResource ToolbarIconButtonStyle}"
+                    ToolTipService.ToolTip="Undo the last repair (Ctrl+Z)">
+                    <FontIcon FontSize="15" Glyph="&#xE7A7;" />
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Z" Modifiers="Control" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+                <Button
+                    x:Name="RedoButton"
+                    AutomationProperties.Name="Redo"
+                    Click="Redo_Click"
+                    IsEnabled="False"
+                    Style="{StaticResource ToolbarIconButtonStyle}"
+                    ToolTipService.ToolTip="Redo the last repair (Ctrl+Y)">
+                    <FontIcon FontSize="15" Glyph="&#xE7A6;" />
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Y" Modifiers="Control" />
+                        <KeyboardAccelerator Key="Z" Modifiers="Control,Shift" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+            </StackPanel>
+
+            <ToggleButton
+                x:Name="CosmeticToggle"
+                Grid.Column="3"
+                Height="32"
+                Padding="10,0"
+                Checked="CosmeticToggle_Changed"
+                CornerRadius="{StaticResource RadiusMedium}"
+                IsChecked="False"
+                ToolTipService.ToolTip="Pre-select renames that differ only by case, spacing or punctuation">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                    <FontIcon FontSize="14" Glyph="&#xE945;" />
+                    <TextBlock Text="Pre-select easy matches" />
+                </StackPanel>
+            </ToggleButton>
+        </Grid>
+
+        <!--  Row 1 · Content  -->
+        <Grid Grid.Row="1" ColumnSpacing="{StaticResource SpaceM}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <!--  Left: the distinct missing fields  -->
+            <Border x:Name="FieldsCard" Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="14,10,14,4">
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Missing fields" />
+                    </Grid>
+
+                    <ListView
+                        x:Name="FieldsListView"
+                        Grid.Row="1"
+                        Padding="14,2,6,6"
+                        SelectionChanged="FieldsListView_SelectionChanged"
+                        SelectionMode="Single">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:BrokenFieldItem">
+                                <!--
+                                    A labelled two-row form. Both labels share one fixed-width
+                                    column so "Current field" sits directly above "Replace
+                                    with" and the values line up beneath each other. The
+                                    checkbox spans both rows and is centred against the pair,
+                                    which also keeps it clear of the selection indicator strip.
+                                -->
+                                <Grid Margin="2,2,0,2" Padding="10,8" ColumnSpacing="{StaticResource SpaceM}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <CheckBox
+                                        Grid.RowSpan="2"
+                                        MinWidth="0"
+                                        Margin="0,0,4,0"
+                                        VerticalAlignment="Center"
+                                        Click="FieldCheckBox_Click"
+                                        FontSize="16"
+                                        IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                        ToolTipService.ToolTip="Include this field in the repair" />
+
+                                    <Grid
+                                        Grid.Column="1"
+                                        ColumnSpacing="{StaticResource SpaceM}"
+                                        RowSpacing="{StaticResource SpaceS}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="96" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource MutedCaptionTextStyle}"
+                                            Text="Current field" />
+
+                                        <Grid Grid.Column="1" ColumnSpacing="{StaticResource SpaceS}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource RowTitleTextStyle}"
+                                                Text="{x:Bind Label}"
+                                                ToolTipService.ToolTip="{x:Bind Label}" />
+
+                                            <StackPanel
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Orientation="Horizontal"
+                                                Spacing="{StaticResource SpaceXS}">
+                                                <Border Style="{StaticResource BadgePillStyle}">
+                                                    <TextBlock
+                                                        Style="{StaticResource BadgeTextStyle}"
+                                                        Text="{x:Bind SeverityLabel}" />
+                                                </Border>
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource RowSubtitleTextStyle}"
+                                                    Text="{x:Bind ImpactLabel}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock
+                                            Grid.Row="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource MutedCaptionTextStyle}"
+                                            Text="Replace with" />
+
+                                        <ComboBox
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            MinWidth="160"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Center"
+                                            ItemsSource="{x:Bind Candidates}"
+                                            SelectedItem="{x:Bind SelectedCandidate, Mode=TwoWay}"
+                                            SelectionChanged="CandidateComboBox_SelectionChanged"
+                                            ToolTipService.ToolTip="Choose the field this should point at">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate x:DataType="local:FieldCandidate">
+                                                    <TextBlock Text="{x:Bind Label}" TextTrimming="CharacterEllipsis" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </Grid>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <!--  Right: where each reference is used  -->
+            <Border x:Name="UsagesCard" Grid.Column="1" Style="{StaticResource CardBorderStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="14,10,14,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Where it is used" />
+                        <TextBlock
+                            x:Name="UsagesHeaderText"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="" />
+                    </Grid>
+
+                    <ListView
+                        x:Name="UsagesListView"
+                        Grid.Row="1"
+                        Padding="14,2,6,6"
+                        SelectionMode="None">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:BrokenUsageItem">
+                                <!-- One row per place: a visual, a page filter or a report
+                                     filter. Repeats inside a visual are counted, so a field
+                                     used by an axis and eight colour rules is two facts. -->
+                                <Grid Margin="2,2,0,2" Padding="10,6" ColumnSpacing="{StaticResource SpaceM}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <FontIcon
+                                        VerticalAlignment="Top"
+                                        Margin="0,3,0,0"
+                                        FontSize="13"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Glyph="{x:Bind Glyph}" />
+
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock
+                                            Style="{StaticResource RowTitleTextStyle}"
+                                            Text="{x:Bind Title}"
+                                            ToolTipService.ToolTip="{x:Bind Title}" />
+                                        <TextBlock
+                                            Style="{StaticResource RowSubtitleTextStyle}"
+                                            Text="{x:Bind Subtitle}"
+                                            ToolTipService.ToolTip="{x:Bind Subtitle}" />
+                                        <TextBlock
+                                            Margin="0,2,0,0"
+                                            Style="{StaticResource MutedCaptionTextStyle}"
+                                            Text="{x:Bind LocationSummary}"
+                                            TextWrapping="Wrap"
+                                            ToolTipService.ToolTip="{x:Bind LocationSummary}"
+                                            Visibility="{x:Bind LocationVisibility}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <!--  Status overlay. Shown instead of the two cards, never on top of them: leaving the
+             card borders visible underneath drew divider lines straight through the message.  -->
+            <Grid Grid.ColumnSpan="2">
+                <StackPanel
+                    x:Name="EmptyStatePanel"
+                    HorizontalAlignment="Center"
+                    Spacing="{StaticResource SpaceM}"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+                    <FontIcon
+                        HorizontalAlignment="Center"
+                        FontSize="30"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE721;" />
+                    <TextBlock
+                        x:Name="EmptyTitleText"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource ToolTitleTextStyle}"
+                        Text="Nothing scanned yet" />
+                    <TextBlock
+                        x:Name="EmptyBodyText"
+                        HorizontalAlignment="Center"
+                        MaxWidth="460"
+                        Style="{StaticResource MutedCaptionTextStyle}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
+                <ProgressRing
+                    x:Name="BusyRing"
+                    Width="34"
+                    Height="34"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsActive="False"
+                    Visibility="Collapsed" />
+            </Grid>
+        </Grid>
+
+        <!--  Row 2 · Footer actions
+             The footer is the live preview: it states exactly what Repair will change, so
+             there is no separate Preview button restating the same counts. Repair sits on the
+             left and is deliberately wide, so the primary action is the obvious target.  -->
+        <Grid Grid.Row="2" Margin="2,10,2,0" ColumnSpacing="{StaticResource SpaceL}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="ApplyButton"
+                Grid.Column="0"
+                MinWidth="280"
+                HorizontalAlignment="Left"
+                Click="ApplyButton_Click"
+                IsEnabled="False"
+                Style="{StaticResource PrimaryActionButtonStyle}"
+                ToolTipService.ToolTip="Repoint the selected fields and update the report">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                    <FontIcon FontSize="14" Glyph="&#xE73E;" />
+                    <TextBlock x:Name="ApplyButtonLabel" Text="Repair selected" />
+                </StackPanel>
+            </Button>
+
+            <TextBlock
+                x:Name="FooterSummaryText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource MutedCaptionTextStyle}"
+                Text=""
+                TextWrapping="Wrap" />
+        </Grid>
+    </Grid>
+</Page>

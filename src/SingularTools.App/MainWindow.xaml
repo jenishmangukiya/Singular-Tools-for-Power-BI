@@ -54,7 +54,25 @@
             IsSettingsVisible="False"
             OpenPaneLength="220"
             PaneDisplayMode="LeftCompact"
-            SelectionChanged="ToolNav_SelectionChanged">
+            SelectionChanged="ToolNav_SelectionChanged"
+            ItemInvoked="ToolNav_ItemInvoked">
+            <NavigationView.FooterMenuItems>
+                <!--
+                    A footer action item rather than a ToggleSwitch: the rail is a
+                    48px compact strip, so an inline switch would be clipped. The
+                    icon/label report the action the click will perform.
+                -->
+                <NavigationViewItem
+                    x:Name="ThemeToggleItem"
+                    Content="Dark mode"
+                    SelectsOnInvoked="False"
+                    Tag="theme-toggle"
+                    ToolTipService.ToolTip="Switch to the dark theme">
+                    <NavigationViewItem.Icon>
+                        <FontIcon x:Name="ThemeToggleIcon" Glyph="&#xE708;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
             <Frame x:Name="ToolFrame" />
         </NavigationView>
 

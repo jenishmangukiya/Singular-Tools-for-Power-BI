@@ -33,6 +33,8 @@
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\AppIcon.ico" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="Assets\power-bi.svg" />
+    <Content Include="Assets\fabric.svg" />
   </ItemGroup>
 
   <ItemGroup>

@@ -57,6 +57,33 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!--
+        The primary action on a tool page. AccentButtonStyle fills with the Windows accent
+        colour, which is blue by default and follows light/dark themes — the same source the
+        Home launcher's accent brushes use, so it stays consistent with the rest of the app.
+    -->
+    <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="{StaticResource ToolbarButtonPadding}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMedium}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!--
+        A square icon button that sits in a toolbar row beside ToolbarButtonStyle buttons.
+        ToolbarButtonStyle pads 10px on each side; on a fixed 32px button that leaves only a 12px
+        content box, which clips a glyph into a broken-looking shape. The padding is removed here
+        so the icon gets the full width. Prefer this over ToolbarButtonStyle for icon-only buttons.
+    -->
+    <Style x:Key="ToolbarIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="{StaticResource IconButtonPadding}" />
+    </Style>
+
     <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
         <Setter Property="Width" Value="28" />
         <Setter Property="Height" Value="28" />
@@ -111,6 +138,20 @@
     -->
     <SolidColorBrush x:Key="BrandAccentSoftBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
     <SolidColorBrush x:Key="BrandAccentMediumBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.20" />
+
+    <!--
+        Reload stands apart from the editing actions. It matches the accent fill a
+        checked ToggleButton (Go to page) uses, so the "read from disk" action is
+        unmistakable in the row.
+    -->
+    <Style x:Key="ReloadButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="{StaticResource ToolbarButtonPadding}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMedium}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
 
     <!--  Soft accent sheen for the report band: accent fading out to transparent  -->
     <LinearGradientBrush

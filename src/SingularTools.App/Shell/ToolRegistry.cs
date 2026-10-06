@@ -37,6 +37,14 @@ public static class ToolRegistry
             category: ToolCategory.ReportStructure,
             requirement: ToolRequirement.Report),
         new(
+            id: "field-repair",
+            title: "Field Repair",
+            description: "Find and repair visuals and filters broken by a renamed field",
+            glyph: "\uE945", // Repair
+            pageType: typeof(Tools.FieldRepair.FieldRepairPage),
+            category: ToolCategory.ReportStructure,
+            requirement: ToolRequirement.SemanticModel),
+        new(
             id: "report-publishing-manager",
             title: "Multi-Workspace Publish",
             description: "Publish a report to multiple Power BI workspaces at once",

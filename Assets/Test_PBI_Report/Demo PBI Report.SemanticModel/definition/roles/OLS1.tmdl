@@ -1,0 +1,9 @@
+role OLS1
+	modelPermission: read
+
+	tablePermission RAW_DATA
+
+		columnPermission address = read
+
+	annotation PBI_Id = 9480eec77de84ca697d5681cbc4d1fb2
+

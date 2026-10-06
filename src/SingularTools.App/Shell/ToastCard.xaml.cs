@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -15,6 +16,9 @@ public sealed partial class ToastCard : UserControl
     {
         InitializeComponent();
         BuildAnimations();
+
+        // ThemeShadow only casts when the element is lifted off its plane; Z must be > 0.
+        ToastSurface.Translation = new Vector3(0, 0, 32);
     }
 
     public void Apply(ToastSeverity severity, string message)
@@ -25,6 +29,12 @@ public sealed partial class ToastCard : UserControl
         SuccessIcon.Visibility = severity == ToastSeverity.Success ? Visibility.Visible : Visibility.Collapsed;
         WarningIcon.Visibility = severity == ToastSeverity.Warning ? Visibility.Visible : Visibility.Collapsed;
         ErrorIcon.Visibility = severity == ToastSeverity.Error ? Visibility.Visible : Visibility.Collapsed;
+
+        // Keep the tint in step with the icon so the whole card carries the severity.
+        InfoTint.Visibility = InfoIcon.Visibility;
+        SuccessTint.Visibility = SuccessIcon.Visibility;
+        WarningTint.Visibility = WarningIcon.Visibility;
+        ErrorTint.Visibility = ErrorIcon.Visibility;
     }
 
     public void PlayIn()

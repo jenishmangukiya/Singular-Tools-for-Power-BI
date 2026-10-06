@@ -193,6 +193,120 @@
                     <StackLayout Spacing="{StaticResource SpaceXXL}" />
                 </ItemsRepeater.Layout>
             </ItemsRepeater>
+
+            <!--
+                Footer: what the tools are built for, who built them, and where the
+                source lives. Logos are loaded at runtime so they follow the same
+                unpackaged-app asset path as the rest of the brand art.
+            -->
+            <Border
+                Margin="0,4,0,0"
+                Padding="18,14"
+                Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="{StaticResource SpaceL}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!--  What it is built for  -->
+                    <StackPanel
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="{StaticResource SpaceL}">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{StaticResource MutedCaptionTextStyle}"
+                            Text="Built for" />
+
+                        <Border
+                            Padding="8,5"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="{StaticResource RadiusMedium}"
+                            ToolTipService.ToolTip="Microsoft Power BI">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                <Image
+                                    x:Name="PowerBiLogo"
+                                    Width="18"
+                                    Height="18"
+                                    VerticalAlignment="Center" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource BadgeTextStyle}"
+                                    Text="Power BI" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Padding="8,5"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="{StaticResource RadiusMedium}"
+                            ToolTipService.ToolTip="Microsoft Fabric">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                <Image
+                                    x:Name="FabricLogo"
+                                    Width="18"
+                                    Height="18"
+                                    VerticalAlignment="Center" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource BadgeTextStyle}"
+                                    Text="Microsoft Fabric" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!--  Who built it, and where the source lives  -->
+                    <StackPanel
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="{StaticResource SpaceL}">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource MutedCaptionTextStyle}"
+                                Text="Made by" />
+                            <HyperlinkButton
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="Jenish Mangukiya on GitHub"
+                                MinHeight="0"
+                                NavigateUri="https://github.com/jenishmangukiya/"
+                                Padding="0"
+                                ToolTipService.ToolTip="Open Jenish Mangukiya's GitHub profile">
+                                <TextBlock
+                                    Style="{StaticResource BadgeTextStyle}"
+                                    Text="Jenish Mangukiya" />
+                            </HyperlinkButton>
+                        </StackPanel>
+
+                        <Rectangle
+                            Width="1"
+                            Height="18"
+                            VerticalAlignment="Center"
+                            Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                        <HyperlinkButton
+                            AutomationProperties.Name="GitHub repository"
+                            NavigateUri="https://github.com/jenishmangukiya/Singular-Tools-for-Power-BI"
+                            Padding="4,2"
+                            ToolTipService.ToolTip="Open the GitHub repository">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceS}">
+                                <Path
+                                    Width="16"
+                                    Height="16"
+                                    VerticalAlignment="Center"
+                                    Fill="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Stretch="Uniform"
+                                    Data="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+                                <TextBlock VerticalAlignment="Center" Text="Singular-Tools-for-Power-BI" />
+                            </StackPanel>
+                        </HyperlinkButton>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Page>
