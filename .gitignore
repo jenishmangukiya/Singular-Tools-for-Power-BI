@@ -2,10 +2,6 @@
 distribution/installer/output/
 distribution/installer/publish/
 
-# Per-architecture build output from the installer build (bin/obj are otherwise tracked)
-src/SingularTools.Core/bin/x64/
-src/SingularTools.Core/bin/x86/
-src/SingularTools.Core/bin/arm64/
-src/SingularTools.Core/obj/x64/
-src/SingularTools.Core/obj/x86/
-src/SingularTools.Core/obj/arm64/
+# Build output (compiled artifacts are per-machine and never committed)
+[Bb]in/
+[Oo]bj/
