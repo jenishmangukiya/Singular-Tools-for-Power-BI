@@ -256,17 +256,13 @@ dotnet test
    ```
 5. **Scan it on VirusTotal (optional).** Upload the `.exe` to <https://www.virustotal.com/gui/home/upload> and check the result for the version you downloaded.
 
-> **Why SmartScreen warns:** the binaries are **not code-signed** yet (unsigned builds trigger SmartScreen's reputation warning). This is expected and is *not* a malware detection. Verify the SHA-256 hash above before running if you want certainty.
+> **Why SmartScreen warns:** the binaries are **not code-signed** yet (unsigned builds trigger SmartScreen's reputation warning). This is expected and is *not* a malware detection. Verify the SHA-256 digest (below) before running if you want certainty.
 
-**SHA-256 of the current release installers** (verify with `Get-FileHash`):
+**Verify the file matches what CI built.** GitHub lists a **SHA-256 digest next to every installer** on the [Releases page](https://github.com/jenishmangukiya/Singular-Tools-for-Power-BI/releases) (each release is rebuilt on every push, so always trust the digest shown there over any copy pasted elsewhere — including an older version of this README). Compare it against your download:
 
-| Release asset | SHA-256 |
-| :--- | :--- |
-| `SingularTools-1.0.1-x64-Setup.exe` | `30fd70afcc1c29e26263cb78337c81d345ce89274e343e5bfd3f2a39b33b4671` |
-| `SingularTools-1.0.1-x86-Setup.exe` | `7dada1db42166c389d6271d2ef8c610cfc3e078b03ab6731add42a53615e2a85` |
-| `SingularTools-1.0.1-arm64-Setup.exe` | `66a94051daa3eb8a871ed9be76ed538422cae53c08acc258a744bfb2fe4be1fa` |
-
-<sub>Hashes are for the current rolling build and change with each release — update this table (or point readers to the auto-generated digest on the Releases page) whenever a new build ships.</sub>
+```powershell
+Get-FileHash .\SingularTools-<version>-x64-Setup.exe -Algorithm SHA256
+```
 
 ---
 
