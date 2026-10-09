@@ -1,0 +1,55 @@
+name: Build installers
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:            # keeps a manual "Run workflow" button
+
+# Allow the job to create the Release with the built-in GITHUB_TOKEN.
+permissions:
+  contents: write
+
+# A new push supersedes an in-flight build instead of queueing behind it.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The test project references Core only, so test it directly instead of the
+      # whole .slnx (which would also build the heavy WinUI app).
+      - name: Test
+        run: dotnet test tests/SingularTools.Tests/SingularTools.Tests.csproj -c Release --nologo
+
+      # Inno Setup 6 is not on the runner; choco is preinstalled and installs into
+      # Program Files (x86), which build-installers.ps1's Resolve-Iscc already probes.
+      - name: Install Inno Setup 6
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installers (x64, x86, arm64)
+        shell: pwsh
+        run: ./distribution/installer/build-installers.ps1 -Version "1.0.${{ github.run_number }}"
+
+      # Safety net: keep the Setup.exes as downloadable run artifacts too.
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ github.run_number }}
+          path: distribution/installer/output/*-Setup.exe
+
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: true
+          files: distribution/installer/output/*-Setup.exe
