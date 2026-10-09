@@ -5,7 +5,7 @@
 - Solution is `SingularTools.slnx` (XML solution format, not `.sln`).
 - `src/SingularTools.Core` — `net10.0`, cross-platform, no WinUI. PBIR/PBIP parsing, page model, edit history, Power BI window detection.
 - `src/SingularTools.App` — `net10.0-windows10.0.26100.0`, unpackaged WinUI 3 exe. **Root namespace is `SingularTools_App` (underscore), not the folder name.**
-- `tests/SingularTools.Tests` — xUnit, references Core only. There is no CI; verification is local.
+- `tests/SingularTools.Tests` — xUnit, references Core only. `.github/workflows/release.yml` runs them on every push to `main`; otherwise verification is local.
 
 ## Commands
 - Build app: `dotnet build src/SingularTools.App/SingularTools.App.csproj`
@@ -37,6 +37,7 @@
 - App is unpackaged WinUI (`WindowsPackageType=None`, self-contained Windows App SDK, custom `Program.Main` with `DISABLE_XAML_GENERATED_MAIN`). Do not remove the `CopyXamlResourcesToPublish` / `CopyAssetsToPublish` targets — `dotnet publish` omits `.xbf`/`.pri`/Assets for unpackaged WinUI, and an installed copy then silently runs stale UI without icons.
 
 ## Distribution
+- `.github/workflows/release.yml` runs the test suite, then `build-installers.ps1` for all three arches, on every push to `main`. It maintains a single **rolling** pre-release (tag `latest-build`): the previous release is deleted with `--cleanup-tag` and recreated, so exactly the 3 Setup.exe assets are attached and the tag tracks the latest commit. Installer version is `1.0.<run_number>`.
 - `distribution/register-external-tool.ps1` publishes Release to `%LOCALAPPDATA%\SingularTools\`, regenerates `distribution/SingularTools.pbitool.json` (absolute exe path + base64 icon), then self-elevates to copy it into Power BI's `External Tools` Common Files directory.
 - `distribution/register-as-admin.cmd` only copies the already-present JSON (no publish); requires admin.
 - `distribution/installer/build-installers.ps1` builds per-arch per-user installers: it publishes self-contained `win-x64`/`win-x86`/`win-arm64` (via `-r`, overriding the `.csproj` arch default) into `distribution/installer/publish/<arch>`, then runs Inno Setup (`ISCC.exe`) on `SingularTools.iss` with `/D` defines (`ArchName`, `ArchitecturesAllowed`, `AppVersion`, `AppSourceDir`, `OutputDir`, `IconData`). Output: `distribution/installer/output/SingularTools-<version>-<arch>-Setup.exe`. Needs Inno Setup 6 (`winget install JRSoftware.InnoSetup`; the resolver also checks `%LOCALAPPDATA%\Programs\Inno Setup 6`). `output/` and `publish/` are gitignored.

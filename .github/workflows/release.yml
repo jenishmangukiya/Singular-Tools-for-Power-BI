@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch:            # keeps a manual "Run workflow" button
 
-# Allow the job to create the Release with the built-in GITHUB_TOKEN.
+# Allow the job to create/update the rolling Release with the built-in GITHUB_TOKEN.
 permissions:
   contents: write
 
@@ -38,18 +38,41 @@ jobs:
         shell: pwsh
         run: ./distribution/installer/build-installers.ps1 -Version "1.0.${{ github.run_number }}"
 
-      # Safety net: keep the Setup.exes as downloadable run artifacts too.
+      # Short-lived safety net; the rolling release below is the real deliverable.
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ github.run_number }}
           path: distribution/installer/output/*-Setup.exe
+          retention-days: 5
 
-      - name: Publish pre-release
+      # A rolling release keeps exactly one entry ("latest-build"). Delete it first
+      # (with its tag) so recreating it below always leaves exactly three assets and
+      # points the tag at the current commit. Legacy per-push `build-*` releases from
+      # the previous scheme are swept up here too. No-op on the very first run.
+      - name: Delete previous rolling + legacy releases
+        shell: pwsh
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tags = @('latest-build')
+          $legacy = gh release list --limit 100 --json tagName --jq '.[].tagName' |
+            Where-Object { $_ -like 'build-*' }
+          $tags += $legacy
+          foreach ($t in ($tags | Select-Object -Unique)) {
+            gh release delete $t --cleanup-tag -y
+          }
+
+      - name: Publish rolling pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
+          tag_name: latest-build
+          name: Latest build
           prerelease: true
-          generate_release_notes: true
+          body: |
+            Rolling pre-release of **Singular Tools**.
+
+            - Commit: `${{ github.sha }}`
+            - Build: run #${{ github.run_number }} (installer version `1.0.${{ github.run_number }}`)
           files: distribution/installer/output/*-Setup.exe
