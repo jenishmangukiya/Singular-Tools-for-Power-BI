@@ -46,17 +46,18 @@ jobs:
           path: distribution/installer/output/*-Setup.exe
           retention-days: 5
 
-      # A rolling release keeps exactly one entry ("latest-build"). Delete it first
+      # A rolling release keeps exactly one entry ("latest"). Delete it first
       # (with its tag) so recreating it below always leaves exactly three assets and
-      # points the tag at the current commit. Legacy per-push `build-*` releases from
-      # the previous scheme are swept up here too. No-op on the very first run.
+      # points the tag at the current commit. The legacy `latest-build` tag and the
+      # older per-push `build-*` releases from the previous schemes are swept up here
+      # too. No-op on the very first run.
       - name: Delete previous rolling + legacy releases
         shell: pwsh
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tags = @('latest-build')
+          $tags = @('latest', 'latest-build')
           $legacy = gh release list --limit 100 --json tagName --jq '.[].tagName' |
             Where-Object { $_ -like 'build-*' }
           $tags += $legacy
@@ -64,14 +65,15 @@ jobs:
             gh release delete $t --cleanup-tag -y
           }
 
-      - name: Publish rolling pre-release
+      - name: Publish rolling release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest-build
-          name: Latest build
-          prerelease: true
+          tag_name: latest
+          name: Latest release
+          prerelease: false
+          make_latest: true
           body: |
-            Rolling pre-release of **Singular Tools**.
+            Latest release of **Singular Tools**.
 
             - Commit: `${{ github.sha }}`
             - Build: run #${{ github.run_number }} (installer version `1.0.${{ github.run_number }}`)
