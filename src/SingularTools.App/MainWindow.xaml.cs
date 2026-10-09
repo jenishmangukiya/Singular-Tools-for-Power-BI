@@ -157,10 +157,29 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void ToolNav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        if (args.InvokedItemContainer is FrameworkElement { Tag: string tag } &&
-            string.Equals(tag, "theme-toggle", StringComparison.Ordinal))
+        if (args.InvokedItemContainer is not FrameworkElement { Tag: string tag }) return;
+
+        if (string.Equals(tag, "theme-toggle", StringComparison.Ordinal))
         {
             ToggleTheme();
+        }
+        else if (string.Equals(tag, "github", StringComparison.Ordinal))
+        {
+            _ = OpenGitHubAsync();
+        }
+    }
+
+    /// <summary>Opens the project's GitHub repository in the default browser.</summary>
+    private static async Task OpenGitHubAsync()
+    {
+        try
+        {
+            await Windows.System.Launcher.LaunchUriAsync(
+                new Uri("https://github.com/jenishmangukiya/Singular-Tools-for-Power-BI"));
+        }
+        catch (Exception ex)
+        {
+            App.Log($"Could not open the GitHub repository: {ex.Message}");
         }
     }
 
